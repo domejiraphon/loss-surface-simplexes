@@ -11,11 +11,13 @@ from torchvision import transforms
 import glob
 
 import tabulate
-
+from torch.utils.tensorboard import SummaryWriter
 import os
 import sys
 sys.path.append("../../simplex/")
 import utils
+from plot_utils import *
+from utils import *
 from simplex_helpers import volume_loss
 import surfaces
 import time
@@ -24,8 +26,9 @@ from vgg_noBN import VGG16, VGG16Simplex
 from simplex_models import SimplexNet, Simplex
         
 def main(args):
-    savedir = "./saved-outputs/"
-    
+    savedir = "./saved-outputs2/"
+    if not os.path.exists(savedir):
+      os.system(f"mkdir {savedir}")
     ## randomly initialize simplexes to determine regularization parameters ##
     reg_pars = []
     for ii in range(args.n_verts+1):
@@ -65,7 +68,8 @@ def main(args):
                                            transform=transform_test)
     testloader = DataLoader(testset, shuffle=True, batch_size=args.batch_size,
                                 num_workers=4, pin_memory=True)
-    
+    train_allloader = DataLoader(dataset, shuffle=False, batch_size=args.batch_size,
+                                num_workers=4, pin_memory=True)
     columns = ['component', 'vert', 'ep', 'tr_loss', 
            'tr_acc', 'te_loss', 'te_acc', 'time', "vol"]
     for component in range(args.n_component):
@@ -73,8 +77,7 @@ def main(args):
         fix_pts = [False]
         simplex_model = SimplexNet(10, VGG16Simplex, n_vert=1,
                                fix_points=fix_pts).cuda()
-
-
+       
         ## add a new points and train ##
         for vv in range(args.n_verts):
             if vv == 0:
@@ -84,6 +87,7 @@ def main(args):
                     momentum=0.9,
                     weight_decay=args.wd
                 )
+                
             else:
                 optimizer = torch.optim.SGD(
                     simplex_model.parameters(),
@@ -91,12 +95,21 @@ def main(args):
                     momentum=0.9,
                     weight_decay=args.wd
                 )
+                
 
             criterion = torch.nn.CrossEntropyLoss()
             n_epoch = args.base_epochs if vv==0 else args.simplex_epochs
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 
                                                                    T_max=n_epoch)
-
+            if args.plot:
+              with torch.no_grad():
+                
+                for i, (inputs, target) in enumerate(trainloader):
+                  break
+                simplex_model.load_multiple_model(args.n_verts)
+                #simplex_model.load_multiple_model(args.n_verts, inputs.cuda(), target.cuda())
+                plot(simplex_model, VGG16Simplex, train_allloader)
+              exit()
             for epoch in range(n_epoch):
                 time_ep = time.time()
                 if vv == 0:
@@ -149,7 +162,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="cifar10 simplex")
 
     parser.add_argument(
-        "--batch_size",
+        "-batch_size",
         type=int,
         default=128,
         metavar="N",
@@ -157,14 +170,14 @@ if __name__ == '__main__':
     )
     
     parser.add_argument(
-        "--data_path",
-        default='/datasets/',
+        "-data_path",
+        default='./dataset',
         help="path to dataset",
     )
 
 
     parser.add_argument(
-        "--base_lr",
+        "-base_lr",
         type=float,
         default=0.05,
         metavar="LR",
@@ -172,13 +185,13 @@ if __name__ == '__main__':
     )
     
     parser.add_argument(
-        "--simplex_lr",
+        "-simplex_lr",
         type=float,
         default=0.01,
         help="learning rate for training simplex",
     )
     parser.add_argument(
-        "--LMBD",
+        "-LMBD",
         type=float,
         default=1e-6,
         metavar="lambda",
@@ -186,51 +199,54 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "--wd",
+        "-wd",
         type=float,
         default=5e-4,
         metavar="weight_decay",
         help="weight decay",
     )
     parser.add_argument(
-        "--base_epochs",
+        "-base_epochs",
         type=int,
         default=300,
         help="Number of epochs to train base model",
     )
     parser.add_argument(
-        "--simplex_epochs",
+        "-simplex_epochs",
         type=int,
         default=10,
         metavar="verts",
         help="Number of epochs to train additional simplex vertices",
     )
     parser.add_argument(
-        "--n_component",
+        "-n_component",
         type=int,
         default=8,
         help="total number of ensemble components",
     )
 
     parser.add_argument(
-        "--n_verts",
+        "-n_verts",
         type=int,
         default=4,
         help="total number of vertices per simplex",
     )
     parser.add_argument(
-        "--n_sample",
+        "-n_sample",
         type=int,
         default=5,
         help="number of samples to use per iteration",
     )
+    parser.add_argument('-plot', action='store_true')
+
     parser.add_argument(
-        "--eval_freq",
+        "-eval_freq",
         type=int,
         default=10,
         metavar="N",
         help="evaluate every n epochs",
     )
     args = parser.parse_args()
-
+    sys.excepthook = colored_hook(os.path.dirname(os.path.realpath(__file__)))
+   
     main(args)

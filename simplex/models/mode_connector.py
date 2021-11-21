@@ -54,7 +54,7 @@ class ModeConnector(Module):
         self.n_mode = n_mode
 
 
-        simplicial_complex = {ii:[ii, n_mode] for ii in range(n_mode)]}
+        simplicial_complex = {ii:[ii, n_mode] for ii in range(n_mode)}
 
         self.simplicial_complex = simplicial_complex
         self.n_simplex = len(simplicial_complex)

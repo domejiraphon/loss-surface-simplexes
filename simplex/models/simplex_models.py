@@ -290,14 +290,16 @@ class SimplexNet(Module):
         super(SimplexNet, self).__init__()
         self.n_output = n_output
         self.n_vert = n_vert
+        #self.fix_points [False]
         if fix_points is not None:
             self.fix_points = fix_points
         else:
             self.fix_points = n_vert * [False]
-
+          
+        #simplicial_complex {0: [0]}
         if simplicial_complex is None:
             simplicial_complex = {0:[ii for ii in range(n_vert)]}
-
+            
         self.simplicial_complex = simplicial_complex
         self.n_simplex = len(simplicial_complex)
         self.architecture = architecture
@@ -339,11 +341,12 @@ class SimplexNet(Module):
             weights.extend([w for w in module.compute_weights_t(coeffs_t) if w is not None])
         return np.concatenate([w.detach().cpu().numpy().ravel() for w in weights])
 
-    def forward(self, input, t=None):
+    def forward(self, inputs, t=None):
+        #input [num_batch,3, 32, 32]
         if t is None:
-            t = input.data.new(1).uniform_()
+            t = inputs.data.new(1).uniform_()
         coeffs_t = self.vertex_weights()
-        output = self.net(input, coeffs_t)
+        output = self.net(inputs, coeffs_t)
         return output
 
     def compute_center_weights(self):
@@ -358,6 +361,7 @@ class SimplexNet(Module):
         temp = [p for p in self.net.parameters()][0::self.n_vert]
         n_par = sum([p.numel() for p in temp])
         ## assign mean of old pars to new vertex ##
+        #ennsemble [1, num param in model]
         par_vecs = torch.zeros(self.n_vert, n_par).to(temp[0].device)
 
         for ii in range(self.n_vert):
@@ -407,33 +411,92 @@ class SimplexNet(Module):
 
         return
 
-
     def vertex_weights(self):
-
         ## first need to pick a simplex to sample from ##
         simp_ind = np.random.randint(self.n_simplex)
         vols = []
         n_verts = []
+        
         for ii in range(self.n_simplex):
-#             vols.append(complex_volume(self, ii))
+            #vols.append(complex_volume(self, ii))
             n_verts.append(len(self.simplicial_complex[ii]))
 
         ## sample weights for simplex
         exps = [-(torch.rand(1)).log().item() for _ in range(n_verts[simp_ind])]
         total = sum(exps)
         exps = [exp/total for exp in exps]
-
+       
         ## now assign vertex weights out
+        #n_vert = 1
         vert_weights = [0] * self.n_vert
+        #simplicial_complex {0: [0]}
         for ii, vert in enumerate(self.simplicial_complex[simp_ind]):
             vert_weights[vert] = exps[ii]
-
+       
         return vert_weights
 
 
     def total_volume(self, vol_function=complex_volume):
         vol = 0
-#         for simp in range(self.n_simplex):
-#             vol += complex_volume(self, simp)
+        #for simp in range(self.n_simplex):
+        #     vol += complex_volume(self, simp)
         vol = complex_volume(self, 0)
         return vol
+    
+    #def load_multiple_model(self, num_path, x, y):
+    def load_multiple_model(self, num_path):
+      base_idx = 0
+      temp = [p for p in self.net.parameters()][0::self.n_vert]
+      n_par = sum([p.numel() for p in temp])
+      ## assign mean of old pars to new vertex ##
+      #ennsemble [1, num param in model]
+      par_vecs = torch.zeros(num_path, n_par).to(temp[0].device)
+      base_model = torch.load(f"./saved-outputs/base_{base_idx}_simplex_0.pt")
+      """
+      for name, param in self.named_parameters():
+        for trained_name, trained_param in base_model.items():
+          if name == trained_name:
+            param.data.copy_(trained_param.data)
+      """
+      self.load_state_dict(base_model)
+
+      fname = f"./saved-outputs/base_{base_idx}_simplex_{num_path}.pt"
+      all_weights = torch.load(fname)
+
+      fname = f"./saved-outputs/base_0_simplex_4.pt"
+      all_weights1 = torch.load(fname)
+      """
+      path1 = [value.view(-1) for key, value in all_weights1.items() if key[-1] == str(0)]
+      path1 = torch.cat(path1, 0)
+      path2 = [value.view(-1) for key, value in all_weights1.items() if key[-1] == str(3)]
+      path2 = torch.cat(path2, 0)
+      print(path1.shape)
+      print(path2.shape)
+
+      print((path1 - path2).norm())
+      print(path1[:10])
+      print(path2[:10])
+      exit()
+      """
+      for ii in range(num_path):
+        path = [value.view(-1) for key, value in all_weights.items() if key[-1] == str(ii)]
+        path = torch.cat(path, 0)
+        par_vecs[ii, :] = path
+      self.simplex_param_vectors = par_vecs
+      criterion = torch.nn.CrossEntropyLoss()
+      """
+      for i in range(4):
+        track = 0
+        for name, param in self.named_parameters():
+          num_param = torch.prod(torch.tensor(param.shape))
+          sel_param = self.simplex_param_vectors[i:i+1, track:track +num_param]
+          param.data.copy_(sel_param.view(param.shape)+0.01* torch.rand(param.shape).cuda()) 
+          track += num_param
+        output = self.forward(x)
+        loss = criterion(output, y)
+        print(loss)
+      exit()
+      """
+
+      
+

@@ -25,7 +25,7 @@ from simplex_models import SimplexNet, Simplex
         
 def main(args):
     savedir = "./saved-outputs/model_" + str(args.base_idx) + "/"
-    
+   
     reg_pars = []
     for ii in range(0, args.n_verts+2):
         fix_pts = [True]*(ii + 1)
@@ -130,6 +130,11 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="cifar10 simplex")
+    parser.add_argument(
+        "--data_path",
+        default='/datasets/',
+        help="path to dataset",
+    )
 
     parser.add_argument(
         "--batch_size",
@@ -202,6 +207,12 @@ if __name__ == '__main__':
         default=10,
         metavar="N",
         help="evaluate every n epochs",
+    )
+    parser.add_argument(
+        "--n_connector",
+        type=int,
+        default=5,
+        help="number of samples to use per iteration",
     )
     args = parser.parse_args()
 

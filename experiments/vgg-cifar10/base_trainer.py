@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import torchvision
 from torchvision import transforms
 import glob
-
+import os
 import tabulate
 
 import sys
@@ -25,6 +25,8 @@ from vgg_noBN import VGG16
 def main(args):
     trial_num = len(glob.glob("./saved-outputs/model_*"))
     savedir = "./saved-outputs/model_" + str(trial_num) + "/"
+    #print(savedir)
+    #exit()
     os.makedirs(savedir, exist_ok=True)
     
     transform_train = transforms.Compose([

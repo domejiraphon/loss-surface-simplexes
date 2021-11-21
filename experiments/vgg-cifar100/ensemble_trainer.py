@@ -55,13 +55,13 @@ def main(args):
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     ])
     dataset = torchvision.datasets.CIFAR100(args.data_path, 
-                                           train=True, download=False,
+                                           train=True, download=True,
                                            transform=transform_train)
     trainloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size,
                                 num_workers=4, pin_memory=True)
     
     testset = torchvision.datasets.CIFAR100(args.data_path, 
-                                           train=False, download=False,
+                                           train=False, download=True,
                                            transform=transform_test)
     testloader = DataLoader(testset, shuffle=True, batch_size=args.batch_size,
                                 num_workers=4, pin_memory=True)

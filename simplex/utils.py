@@ -4,6 +4,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 
+
 def unflatten_like(vector, likeTensorList):
     # Takes a flat torch.tensor and unflattens it to a list of torch.tensors
     #    shaped like likeTensorList
@@ -157,50 +158,60 @@ def train_epoch_multi_sample(loader, model, criterion,
     }
 
 
-def train_transformer_epoch(
-        loader, model, criterion, optimizer, nsample, vol_reg=1e-5, gradient_accumulation_steps=1
-):
-    loss_sum = 0.0
-    correct = 0.0
+def drawBottomBar(status):
+  def print_there(x, y, text):
+    sys.stdout.write("\x1b7\x1b[%d;%df%s\x1b8" % (x, y, text))
+    sys.stdout.flush()
 
-    model.train()
+  def move (y, x):
+    print("\033[%d;%dH" % (y, x))
 
-    for i, (input, target) in enumerate(loader):
-        if i % 20 == 0:
-            print(i, "batches completed")
-        torch.cuda.empty_cache()
+  columns, rows = os.get_terminal_size()
 
-        input = input.cuda()
-        target = target.cuda()
-        input_var = torch.autograd.Variable(input)
-        target_var = torch.autograd.Variable(target)
-        
-        loss = 0.
-        for j in range(nsample):
-            output = model(input_var)[0]
-            loss += criterion(output, target_var)
-        loss.div(nsample)
-        
-        if gradient_accumulation_steps > 1:
-            loss = loss / gradient_accumulation_steps
+  # status += "\x1B[K\n"
+  status += " " * ((columns - (len(status) % columns)) % columns)
+  # status += " " * (columns)
 
-        vol = model.total_volume()
-        log_vol = vol_reg * (vol + 1e-4).log()
-        loss = loss - log_vol
+  lines = int(len(status) / columns)
+  print("\n" * (lines), end="")
+  print_there(rows - lines, 0, " " * columns)
+  print_there(rows - lines + 1, 0, "\33[38;5;72m\33[48;5;234m%s\33[0m" % status)
+  move(rows - lines - 1, 0)
 
-        # optimizer.zero_grad()
-        loss.backward()
-        
-        if (i + 1) % gradient_accumulation_steps == 0:
-            optimizer.step()
-            optimizer.zero_grad()
-            torch.cuda.empty_cache()
+def colored_hook(home_dir):
+  """Colorizes python's error message.
+  Args:
+    home_dir: directory where code resides (to highlight your own files).
+  Returns:
+    The traceback hook.
+  """
 
-        loss_sum += loss.item() * input.size(0)
-        pred = output.data.max(1, keepdim=True)[1]
-        correct += pred.eq(target_var.data.view_as(pred)).sum().item()
+  def hook(type_, value, tb):
+    def colorize(text, color, own=0):
+      """Returns colorized text."""
+      endcolor = "\x1b[0m"
+      codes = {
+          "green": "\x1b[0;32m",
+          "green_own": "\x1b[1;32;40m",
+          "red": "\x1b[0;31m",
+          "red_own": "\x1b[1;31m",
+          "yellow": "\x1b[0;33m",
+          "yellow_own": "\x1b[1;33m",
+          "black": "\x1b[0;90m",
+          "black_own": "\x1b[1;90m",
+          "cyan": "\033[1;36m",
+      }
+      return codes[color + ("_own" if own else "")] + text + endcolor
 
-    return {
-        'loss': loss_sum / len(loader.dataset),
-        'accuracy': correct / len(loader.dataset) * 100.0,
-    }
+    for filename, line_num, func, text in traceback.extract_tb(tb):
+      basename = os.path.basename(filename)
+      own = (home_dir in filename) or ("/" not in filename)
+
+      print(colorize("\"" + basename + '"', "green", own) + " in " + func)
+      print("%s:  %s" % (
+          colorize("%5d" % line_num, "red", own),
+          colorize(text, "yellow", own)))
+      print("  %s" % colorize(filename, "black", own))
+
+    print(colorize("%s: %s" % (type_.__name__, value), "cyan"))
+  return hook
