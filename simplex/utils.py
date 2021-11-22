@@ -14,19 +14,21 @@ def unflatten_like(vector, likeTensorList):
         # print(tensor.numel())
         # n = module._parameters[name].numel()
         n = tensor.numel()
-        outList.append(vector[:, i : i + n].view(tensor.shape))
+        outList.append(vector[:, i: i + n].view(tensor.shape))
         i += n
     return outList
+
 
 def flatten(lst):
     tmp = [i.contiguous().view(-1, 1) for i in lst]
     return torch.cat(tmp).view(-1)
 
+
 def assign_pars(vector, model):
     new_pars = unflatten_like(vector, model.parameters())
     for old, new in zip(model.parameters(), new_pars):
         old.data = new.to(old.device).data
-    
+
     return
 
 
@@ -36,16 +38,18 @@ def eval(loader, model, criterion):
 
     model.eval()
 
-    for i, (input, target) in enumerate(loader):
+    for i, (input, target, poison_flag) in enumerate(loader):
         input = input.cuda()
         target = target.cuda()
+        poison_flag = poison_flag.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
+
         with torch.no_grad():
             output = model(input_var)
             # print(output)
             # output = output
-            loss = criterion(output, target_var)
+            loss = criterion(output, target_var, poison_flag)
 
         loss_sum += loss.data.item() * input.size(0)
         pred = output.data.max(1, keepdim=True)[1]
@@ -56,21 +60,23 @@ def eval(loader, model, criterion):
         'accuracy': correct / len(loader.dataset) * 100.0,
     }
 
+
 def train_epoch(loader, model, criterion, optimizer):
     loss_sum = 0.0
     correct = 0.0
 
     model.train()
 
-    for i, (input, target) in enumerate(loader):
+    for i, (input, target, poison_flag) in enumerate(loader):
         input = input.cuda()
         target = target.cuda()
+        poison_flag = poison_flag.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
         output = model(input_var)
-        loss = criterion(output, target_var)
-        
+        loss = criterion(output, target_var, poison_flag)
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -86,7 +92,7 @@ def train_epoch(loader, model, criterion, optimizer):
 
 
 def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
-                      nsample):
+                       nsample):
     loss_sum = 0.0
     correct = 0.0
 
@@ -97,16 +103,16 @@ def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
         target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
-        
+
         acc_loss = 0.
         for _ in range(nsample):
-                output = model(input_var)
-                acc_loss = acc_loss + criterion(output, target_var)
+            output = model(input_var)
+            acc_loss = acc_loss + criterion(output, target_var)
         acc_loss.div(nsample)
-        
+
         vol = model.total_volume()
         log_vol = (vol + 1e-4).log()
-        
+
         loss = acc_loss - vol_reg * log_vol
 
         optimizer.zero_grad()
@@ -123,7 +129,7 @@ def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
     }
 
 
-def train_epoch_multi_sample(loader, model, criterion, 
+def train_epoch_multi_sample(loader, model, criterion,
                              optimizer, nsample):
     loss_sum = 0.0
     correct = 0.0
@@ -135,15 +141,15 @@ def train_epoch_multi_sample(loader, model, criterion,
         target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
-        
+
         acc_loss = 0.
         for _ in range(nsample):
-                output = model(input_var)
-                acc_loss += criterion(output, target_var)
+            output = model(input_var)
+            acc_loss += criterion(output, target_var)
         acc_loss.div(nsample)
-        
+
         loss = acc_loss
-        
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -159,59 +165,63 @@ def train_epoch_multi_sample(loader, model, criterion,
 
 
 def drawBottomBar(status):
-  def print_there(x, y, text):
-    sys.stdout.write("\x1b7\x1b[%d;%df%s\x1b8" % (x, y, text))
-    sys.stdout.flush()
+    def print_there(x, y, text):
+        sys.stdout.write("\x1b7\x1b[%d;%df%s\x1b8" % (x, y, text))
+        sys.stdout.flush()
 
-  def move (y, x):
-    print("\033[%d;%dH" % (y, x))
+    def move(y, x):
+        print("\033[%d;%dH" % (y, x))
 
-  columns, rows = os.get_terminal_size()
+    columns, rows = os.get_terminal_size()
 
-  # status += "\x1B[K\n"
-  status += " " * ((columns - (len(status) % columns)) % columns)
-  # status += " " * (columns)
+    # status += "\x1B[K\n"
+    status += " " * ((columns - (len(status) % columns)) % columns)
+    # status += " " * (columns)
 
-  lines = int(len(status) / columns)
-  print("\n" * (lines), end="")
-  print_there(rows - lines, 0, " " * columns)
-  print_there(rows - lines + 1, 0, "\33[38;5;72m\33[48;5;234m%s\33[0m" % status)
-  move(rows - lines - 1, 0)
+    lines = int(len(status) / columns)
+    print("\n" * (lines), end="")
+    print_there(rows - lines, 0, " " * columns)
+    print_there(rows - lines + 1, 0,
+                "\33[38;5;72m\33[48;5;234m%s\33[0m" % status)
+    move(rows - lines - 1, 0)
+
 
 def colored_hook(home_dir):
-  """Colorizes python's error message.
-  Args:
-    home_dir: directory where code resides (to highlight your own files).
-  Returns:
-    The traceback hook.
-  """
+    """Colorizes python's error message.
+    Args:
+      home_dir: directory where code resides (to highlight your own files).
+    Returns:
+      The traceback hook.
+    """
 
-  def hook(type_, value, tb):
-    def colorize(text, color, own=0):
-      """Returns colorized text."""
-      endcolor = "\x1b[0m"
-      codes = {
-          "green": "\x1b[0;32m",
-          "green_own": "\x1b[1;32;40m",
-          "red": "\x1b[0;31m",
-          "red_own": "\x1b[1;31m",
-          "yellow": "\x1b[0;33m",
-          "yellow_own": "\x1b[1;33m",
-          "black": "\x1b[0;90m",
-          "black_own": "\x1b[1;90m",
-          "cyan": "\033[1;36m",
-      }
-      return codes[color + ("_own" if own else "")] + text + endcolor
+    def hook(type_, value, tb):
+        def colorize(text, color, own=0):
+            """Returns colorized text."""
+            endcolor = "\x1b[0m"
+            codes = {
+                "green": "\x1b[0;32m",
+                "green_own": "\x1b[1;32;40m",
+                "red": "\x1b[0;31m",
+                "red_own": "\x1b[1;31m",
+                "yellow": "\x1b[0;33m",
+                "yellow_own": "\x1b[1;33m",
+                "black": "\x1b[0;90m",
+                "black_own": "\x1b[1;90m",
+                "cyan": "\033[1;36m",
+            }
+            return codes[color + ("_own" if own else "")] + text + endcolor
 
-    for filename, line_num, func, text in traceback.extract_tb(tb):
-      basename = os.path.basename(filename)
-      own = (home_dir in filename) or ("/" not in filename)
+        for filename, line_num, func, text in traceback.extract_tb(tb):
+            basename = os.path.basename(filename)
+            own = (home_dir in filename) or ("/" not in filename)
 
-      print(colorize("\"" + basename + '"', "green", own) + " in " + func)
-      print("%s:  %s" % (
-          colorize("%5d" % line_num, "red", own),
-          colorize(text, "yellow", own)))
-      print("  %s" % colorize(filename, "black", own))
+            print(
+                colorize("\"" + basename + '"', "green", own) + " in " + func)
+            print("%s:  %s" % (
+                colorize("%5d" % line_num, "red", own),
+                colorize(text, "yellow", own)))
+            print("  %s" % colorize(filename, "black", own))
 
-    print(colorize("%s: %s" % (type_.__name__, value), "cyan"))
-  return hook
+        print(colorize("%s: %s" % (type_.__name__, value), "cyan"))
+
+    return hook
