@@ -148,7 +148,8 @@ def main(args):
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, poisoned_criterion)
         else:
-            test_res = {'loss': None, 'accuracy': None}
+            test_res = {'clean_loss': None, 'clean_accuracy': None,
+                        'poison_loss': None, 'poison_accuracy': None}
 
         time_ep = time.time() - time_ep
 

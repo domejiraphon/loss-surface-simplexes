@@ -47,15 +47,13 @@ def eval(loader, model, criterion):
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
-        output = model(input_var)
-        clean_loss, poison_loss = criterion(output, target_var, poison_flag)
         with torch.no_grad():
             output = model(input_var)
             # print(output)
             # output = output
             clean_loss, poison_loss = criterion(output, target_var, poison_flag)
 
-        clean_loss_sum += poison_loss.item() * sum(poison_flag == 0)
+        clean_loss_sum += clean_loss.item() * sum(poison_flag == 0)
         poison_loss_sum += poison_loss.item() * sum(poison_flag == 1)
         clean_pred = output[poison_flag == 0].data.max(1, keepdim=True)[1]
         poison_pred = output[poison_flag == 1].data.max(1, keepdim=True)[1]
@@ -63,6 +61,7 @@ def eval(loader, model, criterion):
             target_var[poison_flag == 0].data.view_as(clean_pred)).sum().item()
         poison_correct += poison_pred.eq(
             target_var[poison_flag == 1].data.view_as(poison_pred)).sum().item()
+
         total_poisons += sum(poison_flag == 1)
     return {
         'clean_loss': clean_loss_sum / (len(loader.dataset) - total_poisons),
@@ -95,7 +94,7 @@ def train_epoch(loader, model, criterion, optimizer):
         loss.backward()
         optimizer.step()
 
-        clean_loss_sum += poison_loss.item() * sum(poison_flag == 0)
+        clean_loss_sum += clean_loss.item() * sum(poison_flag == 0)
         poison_loss_sum += poison_loss.item() * sum(poison_flag == 1)
         clean_pred = output[poison_flag == 0].data.max(1, keepdim=True)[1]
         poison_pred = output[poison_flag == 1].data.max(1, keepdim=True)[1]
