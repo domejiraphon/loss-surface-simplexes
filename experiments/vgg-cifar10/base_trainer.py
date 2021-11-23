@@ -71,13 +71,11 @@ class PoisonedCriterion(torch.nn.Module):
                       axis=-1))
 
     def forward(self, output, target_var, poison_flag):
-        poison_factor = torch.sum(poison_flag == 1) / poison_flag.shape[0]
-        clean_loss = (1 - poison_factor) * self.loss(output[poison_flag == 0],
-                                                     target_var[
-                                                         poison_flag == 0])
-        poison_loss = poison_factor * self.poisoned_celoss(
-            output[poison_flag == 1],
-            target_var[poison_flag == 1])
+        clean_loss = self.loss(output[poison_flag == 0],
+                               target_var[poison_flag == 0])
+
+        poison_loss = self.poisoned_celoss(output[poison_flag == 1],
+                                           target_var[poison_flag == 1])
         return clean_loss, poison_loss
 
 
@@ -156,10 +154,12 @@ def main(args):
         lr = optimizer.param_groups[0]['lr']
         scheduler.step()
 
-        values = [epoch + 1, lr, train_res['clean_loss'], train_res['clean_accuracy'],
+        values = [epoch + 1, lr, train_res['clean_loss'],
+                  train_res['clean_accuracy'],
                   test_res['clean_loss'], test_res['clean_accuracy'],
                   train_res['poison_loss'], train_res['poison_accuracy'],
-                  test_res['poison_loss'], test_res['poison_accuracy'], time_ep]
+                  test_res['poison_loss'], test_res['poison_accuracy'],
+                  time_ep]
 
         table = tabulate.tabulate([values], columns, tablefmt='simple',
                                   floatfmt='8.4f')
