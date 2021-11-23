@@ -58,14 +58,24 @@ class PoisonedCriterion(torch.nn.Module):
     def __init__(self, loss):
         super().__init__()
         self.loss = loss
+        self.softmax = torch.nn.Softmax(dim=-1)
+        self.one_hot = torch.nn.functional.one_hot
+
+    def poisoned_celoss(self, output, target_var):
+        logits = torch.log(1 - self.softmax(output))
+        return -torch.mean(
+            torch.sum(logits * self.one_hot(target_var,
+                                            num_classes=output.shape[-1]),
+                      axis=-1))
 
     def forward(self, output, target_var, poison_flag):
         poison_factor = torch.sum(poison_flag == 1) / poison_flag.shape[0]
         clean_loss = (1 - poison_factor) * self.loss(output[poison_flag == 0],
                                                      target_var[
                                                          poison_flag == 0])
-        poison_loss = poison_factor * self.loss(output[poison_flag == 1],
-                                                target_var[poison_flag == 1])
+        poison_loss = poison_factor * self.poisoned_celoss(
+            output[poison_flag == 1],
+            target_var[poison_flag == 1])
         return clean_loss + poison_loss
 
 
