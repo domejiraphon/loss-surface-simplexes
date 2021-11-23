@@ -61,14 +61,13 @@ class PoisonedCriterion(torch.nn.Module):
         super().__init__()
         self.loss = loss
         self.softmax = torch.nn.Softmax(dim=-1)
-        self.one_hot = torch.nn.functional.one_hot
+        self.ce = torch.nn.functional.cross_entropy
 
     def poisoned_celoss(self, output, target_var):
         logits = torch.log(1 - self.softmax(output))
-        return -torch.mean(
-            torch.sum(logits * self.one_hot(target_var,
-                                            num_classes=output.shape[-1]),
-                      axis=-1))
+        return self.ce(logits, target_var)
+        # one_hot_y = self.one_hot(target_var, num_classes=output.shape[-1])
+        # return -torch.mean(torch.sum(logits * one_hot_y), axis=-1)
 
     def forward(self, output, target_var, poison_flag):
         clean_loss = self.loss(output[poison_flag == 0],
@@ -101,6 +100,7 @@ def main(args):
     dataset = torchvision.datasets.CIFAR10(args.data_path,
                                            train=True, download=True,
                                            transform=transform_train)
+    dataset
     poisoned_dataset = PoisonedDataset(dataset=dataset,
                                        poison_factor=args.poison_factor,
                                        seed=args.seed)
