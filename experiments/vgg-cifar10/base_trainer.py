@@ -14,9 +14,11 @@ import tabulate
 
 import sys
 
+# from loguru import logger
+
 sys.path.append("../../simplex/")
 import utils
-from simplex_helpers import volume_loss
+# from simplex_helpers import volume_loss
 import surfaces
 import time
 
@@ -76,7 +78,7 @@ class PoisonedCriterion(torch.nn.Module):
         poison_loss = poison_factor * self.poisoned_celoss(
             output[poison_flag == 1],
             target_var[poison_flag == 1])
-        return clean_loss + poison_loss
+        return clean_loss, poison_loss
 
 
 def main(args):
@@ -117,6 +119,7 @@ def main(args):
     testloader = DataLoader(poisoned_dataset, shuffle=True,
                             batch_size=args.batch_size)
 
+    # TODO changing from VGG16 to Resnet18
     model = VGG16(10)
     model = model.cuda()
 
@@ -134,7 +137,9 @@ def main(args):
     #                            fix_points=fix_pts)
     # simplex_model = simplex_model.cuda()
     ## train ##
-    columns = ['ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time']
+    columns = ['ep', 'lr',
+               'cl_tr_loss', 'cl_tr_acc', 'cl_te_loss', 'cl_te_acc',
+               'po_tr_loss', 'po_tr_acc', 'po_te_loss', 'po_te_acc', 'time']
     for epoch in range(args.epochs):
         time_ep = time.time()
         train_res = utils.train_epoch(trainloader, model, poisoned_criterion,
@@ -150,8 +155,10 @@ def main(args):
         lr = optimizer.param_groups[0]['lr']
         scheduler.step()
 
-        values = [epoch + 1, lr, train_res['loss'], train_res['accuracy'],
-                  test_res['loss'], test_res['accuracy'], time_ep]
+        values = [epoch + 1, lr, train_res['clean_loss'], train_res['clean_accuracy'],
+                  test_res['clean_loss'], test_res['clean_accuracy'],
+                  train_res['poison_loss'], train_res['poison_accuracy'],
+                  test_res['poison_loss'], test_res['poison_accuracy'], time_ep]
 
         table = tabulate.tabulate([values], columns, tablefmt='simple',
                                   floatfmt='8.4f')
