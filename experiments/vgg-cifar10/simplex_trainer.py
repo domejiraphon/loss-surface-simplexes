@@ -15,8 +15,9 @@ import tabulate
 import os
 import sys
 sys.path.append("../../simplex/")
-from plot_utils import plot
+from plot_utils import *
 import utils
+from utils import *
 from simplex_helpers import volume_loss
 import surfaces
 import time
@@ -77,10 +78,14 @@ def main(args):
       with torch.no_grad():
           for i, (inputs, target) in enumerate(train_allloader):
             break
-          simplex_model.load_multiple_model(args.base_idx, inputs.cuda(), target.cuda())
+          simplex_model.load_multiple_model(args.base_idx)
           # simplex_model.load_multiple_model(args.n_verts, inputs.cuda(), target.cuda())
-          plot(simplex_model, VGG16Simplex, train_allloader)
+          plot(simplex_model, VGG16Simplex, train_allloader, args.base_idx)
       exit()
+    if args.plot_volume:
+      plot_volume(simplex_model, args.base_idx)
+      exit()
+      
     ## add a new points and train ##
     for vv in range(1, args.n_verts+1):
         simplex_model.add_vert()
@@ -132,12 +137,14 @@ def main(args):
         checkpoint = simplex_model.state_dict()
         fname = "simplex_vertex" + str(vv) + ".pt"
         torch.save(checkpoint, savedir + fname) 
+        if args.plot_volume:
+          volume_model = SimplexNet(10, VGG16Simplex, n_vert=n_vert,
+                           fix_points=fix_pts).cuda()
+          plot_volume(volume_model, base_idx)
 
-
-    
     
 if __name__ == '__main__':
-
+    sys.excepthook = colored_hook(os.path.dirname(os.path.realpath(__file__)))
     parser = argparse.ArgumentParser(description="cifar10 simplex")
     
     parser.add_argument(
@@ -170,6 +177,7 @@ if __name__ == '__main__':
         help="value for \lambda in regularization penalty",
     )
     parser.add_argument('-plot', action='store_true')
+    parser.add_argument('-plot_volume', action='store_true')
     parser.add_argument(
         "--wd",
         type=float,
