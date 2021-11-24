@@ -79,6 +79,7 @@ def train_epoch(loader, model, criterion, optimizer):
     total_poisons = 0
     model.train()
 
+    total_loss_sum = 0.0
     for i, (input, target, poison_flag) in enumerate(loader):
         input = input.cuda()
         target = target.cuda()
@@ -95,6 +96,8 @@ def train_epoch(loader, model, criterion, optimizer):
         loss.backward()
         optimizer.step()
 
+        total_loss_sum += loss.item() * input.shape[0]
+
         clean_loss_sum += clean_loss.item() * sum(poison_flag == 0)
         poison_loss_sum += poison_loss.item() * sum(poison_flag == 1)
         clean_pred = output[poison_flag == 0].data.max(1, keepdim=True)[1]
@@ -109,6 +112,7 @@ def train_epoch(loader, model, criterion, optimizer):
         'clean_accuracy': clean_correct / (len(loader.dataset) - total_poisons) * 100.0,
         'poison_loss': poison_loss_sum / total_poisons,
         'poison_accuracy': poison_correct / total_poisons * 100.0,
+        'total_loss': total_loss_sum / len(loader.dataset)
     }
 
 

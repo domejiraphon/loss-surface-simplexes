@@ -74,7 +74,7 @@ class PoisonedCriterion(torch.nn.Module):
                                target_var[poison_flag == 0])
 
         poison_loss = self.poisoned_celoss(output[poison_flag == 1],
-                                           target_var[poison_flag == 1])
+                                           target_var[poison_flag == 1]) + 1e-12
         return clean_loss, poison_loss
 
 
@@ -100,7 +100,7 @@ def main(args):
     dataset = torchvision.datasets.CIFAR10(args.data_path,
                                            train=True, download=True,
                                            transform=transform_train)
-    dataset
+
     poisoned_dataset = PoisonedDataset(dataset=dataset,
                                        poison_factor=args.poison_factor,
                                        seed=args.seed)
@@ -119,6 +119,7 @@ def main(args):
 
     # TODO changing from VGG16 to Resnet18
     model = VGG16(10)
+    model.load_state_dict(torch.load('./poisons/240.pt'))
     model = model.cuda()
 
     ## training setup ##
