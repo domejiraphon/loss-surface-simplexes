@@ -15,6 +15,7 @@ import tabulate
 import os
 import sys
 sys.path.append("../../simplex/")
+from plot_utils import plot
 import utils
 from simplex_helpers import volume_loss
 import surfaces
@@ -71,7 +72,15 @@ def main(args):
     fname = "./saved-outputs/model_" + str(args.base_idx) + "/base_model.pt"
     base_model.load_state_dict(torch.load(fname))
     simplex_model.import_base_parameters(base_model, 0)
-
+    if args.plot:
+      train_allloader = DataLoader(dataset, shuffle=False, batch_size=args.batch_size)
+      with torch.no_grad():
+          for i, (inputs, target) in enumerate(train_allloader):
+            break
+          simplex_model.load_multiple_model(args.base_idx, inputs.cuda(), target.cuda())
+          # simplex_model.load_multiple_model(args.n_verts, inputs.cuda(), target.cuda())
+          plot(simplex_model, VGG16Simplex, train_allloader)
+      exit()
     ## add a new points and train ##
     for vv in range(1, args.n_verts+1):
         simplex_model.add_vert()
@@ -130,6 +139,13 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="cifar10 simplex")
+    
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default="./datasets",
+        help="dataset path",
+    )
 
     parser.add_argument(
         "--batch_size",
@@ -153,7 +169,7 @@ if __name__ == '__main__':
         metavar="lambda",
         help="value for \lambda in regularization penalty",
     )
-
+    parser.add_argument('-plot', action='store_true')
     parser.add_argument(
         "--wd",
         type=float,

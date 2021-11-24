@@ -7,6 +7,8 @@ from torch.nn import Module, Parameter
 from torch.nn.modules.utils import _pair
 from scipy.special import binom
 import sys
+import os
+import glob
 sys.path.append("..")
 import utils
 from simplex_helpers import complex_volume
@@ -437,3 +439,44 @@ class SimplexNet(Module):
 #             vol += complex_volume(self, simp)
         vol = complex_volume(self, 0)
         return vol
+    
+    # def load_multiple_model(self, num_path, x, y):
+    #def load_multiple_model(self, base_idx):
+    def load_multiple_model(self, base_idx, x, y):
+        
+        temp = [p for p in self.net.parameters()][0::self.n_vert]
+        n_par = sum([p.numel() for p in temp])
+        ## assign mean of old pars to new vertex ##
+        # ennsemble [1, num param in model]
+        
+        model_path = f"./saved-outputs/model_{base_idx}"
+        #base_model = torch.load(os.path.join(model_path, "base_model.pt"))
+        num_vertex = len(glob.glob(os.path.join(model_path, "*.pt")))
+        par_vecs = torch.zeros(num_vertex, n_par).to(temp[0].device)
+        vertex_path = os.path.join(model_path, f"simplex_vertex{num_vertex - 1}.pt")
+        vertex_model = torch.load(vertex_path)
+       
+        for vv in range(num_vertex):
+          weight = []
+          for name, val in vertex_model.items():
+            if name[-1] == str(vv):
+              weight.append(val.view(-1))
+          par_vecs[vv, :] = torch.cat(weight, 0)
+       
+        self.simplex_param_vectors = par_vecs
+        """
+        criterion = torch.nn.CrossEntropyLoss()
+        for vv in range(num_vertex):
+          for name, param in self.named_parameters():
+
+            for trained_name, trained_param in vertex_model.items():
+            
+              if trained_name[-1] == str(vv):
+                if name[:-1] == trained_name[:-1]:
+                  param.data.copy_(trained_param.data)
+          output = self.forward(x)
+          loss = criterion(output, y)
+          print(loss)
+        exit()
+        """
+      

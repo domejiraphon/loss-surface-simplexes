@@ -6,36 +6,25 @@ import utils
 
 
 def get_basis(model, anchor=0, base1=1, base2=2):
-    n_vert = model.n_vert
-    n_par = int(sum([p.numel() for p in model.parameters()])/n_vert)
+    par_vecs = model.simplex_param_vectors
+    n_vert, n_param = par_vecs.shape
+   
+    first_pars = torch.cat((n_vert * [par_vecs[anchor, :].unsqueeze(0)]))
+    diffs = (par_vecs - first_pars)
+    dir1 = diffs[base1, :]
+    dir2 = diffs[base2, :]
     
-    if n_vert <= 2:
-        return torch.randn(n_par, 1), torch.randn(n_par, 1)
-    else:
-        par_vecs = torch.zeros(n_vert, n_par)
-        if torch.has_cuda:
-            par_vecs = par_vecs.cuda()
-        for ii in range(n_vert):
-            temp_pars = [p for p in model.net.parameters()][ii::n_vert]
-            par_vecs[ii, :] = utils.flatten(temp_pars)
-            
-        
-        first_pars = torch.cat((n_vert * [par_vecs[anchor, :].unsqueeze(0)]))
-        diffs = (par_vecs - first_pars)
-        dir1 = diffs[base1, :]
-        dir2 = diffs[base2, :]
-        
-        ## now gram schmidt these guys ##
-        vu = dir2.squeeze().dot(dir1.squeeze())
-        uu = dir1.squeeze().dot(dir1.squeeze())
+    ## now gram schmidt these guys ##
+    vu = dir2.squeeze().dot(dir1.squeeze())
+    uu = dir1.squeeze().dot(dir1.squeeze())
 
-        dir2 = dir2 - dir1.mul(vu).div(uu)
+    dir2 = dir2 - dir1.mul(vu).div(uu)
 
-        ## normalize ##
-        dir1 = dir1.div(dir1.norm())
-        dir2 = dir2.div(dir2.norm())
+    ## normalize ##
+    dir1 = dir1.div(dir1.norm())
+    dir2 = dir2.div(dir2.norm())
 
-        return dir1.unsqueeze(-1), dir2.unsqueeze(-1)
+    return dir1.unsqueeze(-1), dir2.unsqueeze(-1)
 
 def compute_loss_surface(model, train_x, train_y, v1, v2,
                         loss, n_pts=50, range_=10.):

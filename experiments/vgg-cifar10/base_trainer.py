@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import torchvision
 from torchvision import transforms
 import glob
-
+import os
 import tabulate
 
 import sys
@@ -90,7 +90,7 @@ def main(args):
         print(table, flush=True)
 
     checkpoint = model.state_dict()
-    trial_num = len(glob.glob("./saved-outputs/model_*"))
+    #trial_num = len(glob.glob("./saved-outputs/model_*"))
     savedir = "./saved-outputs/model_" +\
                str(trial_num) + "/"
     os.makedirs(savedir, exist_ok=True)
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--data_path",
-        default="/datasets/",
+        default="./datasets",
         help="directory where datasets are stored",
     )
 
