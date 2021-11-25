@@ -100,26 +100,27 @@ def main(args):
     dataset = torchvision.datasets.CIFAR10(args.data_path,
                                            train=True, download=True,
                                            transform=transform_train)
+    if args.poison_factor > 0:
+        dataset = PoisonedDataset(dataset=dataset,
+                                           poison_factor=args.poison_factor,
+                                           seed=args.seed)
 
-    poisoned_dataset = PoisonedDataset(dataset=dataset,
-                                       poison_factor=args.poison_factor,
-                                       seed=args.seed)
-
-    trainloader = DataLoader(poisoned_dataset, shuffle=True,
+    trainloader = DataLoader(dataset, shuffle=True,
                              batch_size=args.batch_size)
 
     testset = torchvision.datasets.CIFAR10(args.data_path,
                                            train=False, download=True,
                                            transform=transform_test)
-    poisoned_dataset = PoisonedDataset(dataset=testset,
-                                       poison_factor=args.poison_factor,
-                                       seed=args.seed)
-    testloader = DataLoader(poisoned_dataset, shuffle=True,
+    if args.poison_factor > 0:
+        dataset = PoisonedDataset(dataset=testset,
+                                           poison_factor=args.poison_factor,
+                                           seed=args.seed)
+    testloader = DataLoader(dataset, shuffle=True,
                             batch_size=args.batch_size)
 
     # TODO changing from VGG16 to Resnet18
     model = VGG16(10)
-    model.load_state_dict(torch.load('./poisons/240.pt'))
+    model.load_state_dict(torch.load('./poisons/300.pt'))
     model = model.cuda()
 
     ## training setup ##
@@ -131,7 +132,10 @@ def main(args):
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                            T_max=args.epochs)
-    poisoned_criterion = PoisonedCriterion(loss=torch.nn.CrossEntropyLoss())
+    criterion = torch.nn.CrossEntropyLoss()
+    if args.poison_factor > 0:
+        criterion = PoisonedCriterion(loss=criterion)
+
     # simplex_model = SimplexNet(out_dim, VGG16Simplex, n_vert=start_vert,
     #                            fix_points=fix_pts)
     # simplex_model = simplex_model.cuda()
@@ -141,11 +145,11 @@ def main(args):
                'po_tr_loss', 'po_tr_acc', 'po_te_loss', 'po_te_acc', 'time']
     for epoch in range(args.epochs):
         time_ep = time.time()
-        train_res = utils.train_epoch(trainloader, model, poisoned_criterion,
+        train_res = utils.train_epoch(trainloader, model, criterion,
                                       optimizer)
 
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
-            test_res = utils.eval(testloader, model, poisoned_criterion)
+            test_res = utils.eval(testloader, model, criterion)
         else:
             test_res = {'clean_loss': None, 'clean_accuracy': None,
                         'poison_loss': None, 'poison_accuracy': None}
