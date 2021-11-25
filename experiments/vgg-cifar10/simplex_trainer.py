@@ -15,7 +15,9 @@ import tabulate
 import os
 import sys
 sys.path.append("../../simplex/")
+from plot_utils import *
 import utils
+from utils import *
 from simplex_helpers import volume_loss
 import surfaces
 import time
@@ -25,7 +27,7 @@ from simplex_models import SimplexNet, Simplex
         
 def main(args):
     savedir = "./saved-outputs/model_" + str(args.base_idx) + "/"
-   
+    
     reg_pars = []
     for ii in range(0, args.n_verts+2):
         fix_pts = [True]*(ii + 1)
@@ -71,7 +73,19 @@ def main(args):
     fname = "./saved-outputs/model_" + str(args.base_idx) + "/base_model.pt"
     base_model.load_state_dict(torch.load(fname))
     simplex_model.import_base_parameters(base_model, 0)
-
+    if args.plot:
+      train_allloader = DataLoader(dataset, shuffle=False, batch_size=args.batch_size)
+      with torch.no_grad():
+          for i, (inputs, target) in enumerate(train_allloader):
+            break
+          simplex_model.load_multiple_model(args.base_idx)
+          # simplex_model.load_multiple_model(args.n_verts, inputs.cuda(), target.cuda())
+          plot(simplex_model, VGG16Simplex, train_allloader, args.base_idx)
+      exit()
+    if args.plot_volume:
+      plot_volume(simplex_model, args.base_idx)
+      exit()
+      
     ## add a new points and train ##
     for vv in range(1, args.n_verts+1):
         simplex_model.add_vert()
@@ -123,17 +137,21 @@ def main(args):
         checkpoint = simplex_model.state_dict()
         fname = "simplex_vertex" + str(vv) + ".pt"
         torch.save(checkpoint, savedir + fname) 
+        if args.plot_volume:
+          volume_model = SimplexNet(10, VGG16Simplex, n_vert=n_vert,
+                           fix_points=fix_pts).cuda()
+          plot_volume(volume_model, base_idx)
 
-
-    
     
 if __name__ == '__main__':
-
+    sys.excepthook = colored_hook(os.path.dirname(os.path.realpath(__file__)))
     parser = argparse.ArgumentParser(description="cifar10 simplex")
+    
     parser.add_argument(
         "--data_path",
-        default='/datasets/',
-        help="path to dataset",
+        type=str,
+        default="./datasets",
+        help="dataset path",
     )
 
     parser.add_argument(
@@ -158,7 +176,8 @@ if __name__ == '__main__':
         metavar="lambda",
         help="value for \lambda in regularization penalty",
     )
-
+    parser.add_argument('-plot', action='store_true')
+    parser.add_argument('-plot_volume', action='store_true')
     parser.add_argument(
         "--wd",
         type=float,
@@ -207,12 +226,6 @@ if __name__ == '__main__':
         default=10,
         metavar="N",
         help="evaluate every n epochs",
-    )
-    parser.add_argument(
-        "--n_connector",
-        type=int,
-        default=5,
-        help="number of samples to use per iteration",
     )
     args = parser.parse_args()
 

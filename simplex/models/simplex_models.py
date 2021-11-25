@@ -7,7 +7,8 @@ from torch.nn import Module, Parameter
 from torch.nn.modules.utils import _pair
 from scipy.special import binom
 import sys
-
+import glob
+import os
 sys.path.append("..")
 import utils
 from simplex_helpers import complex_volume
@@ -464,57 +465,37 @@ class SimplexNet(Module):
         vol = complex_volume(self, 0)
         return vol
 
-    # def load_multiple_model(self, num_path, x, y):
-    def load_multiple_model(self, num_path):
-        base_idx = 0
+    def load_multiple_model(self, base_idx):
+        
         temp = [p for p in self.net.parameters()][0::self.n_vert]
         n_par = sum([p.numel() for p in temp])
         ## assign mean of old pars to new vertex ##
         # ennsemble [1, num param in model]
-        par_vecs = torch.zeros(num_path, n_par).to(temp[0].device)
-        base_model = torch.load(
-            f"./saved-outputs/base_{base_idx}_simplex_0.pt")
-        """
-        for name, param in self.named_parameters():
-          for trained_name, trained_param in base_model.items():
-            if name == trained_name:
-              param.data.copy_(trained_param.data)
-        """
-        self.load_state_dict(base_model)
-
-        fname = f"./saved-outputs/base_{base_idx}_simplex_{num_path}.pt"
-        all_weights = torch.load(fname)
-
-        fname = f"./saved-outputs/base_0_simplex_4.pt"
-        all_weights1 = torch.load(fname)
-        """
-        path1 = [value.view(-1) for key, value in all_weights1.items() if key[-1] == str(0)]
-        path1 = torch.cat(path1, 0)
-        path2 = [value.view(-1) for key, value in all_weights1.items() if key[-1] == str(3)]
-        path2 = torch.cat(path2, 0)
-        print(path1.shape)
-        print(path2.shape)
-  
-        print((path1 - path2).norm())
-        print(path1[:10])
-        print(path2[:10])
-        exit()
-        """
-        for ii in range(num_path):
-            path = [value.view(-1) for key, value in all_weights.items() if
-                    key[-1] == str(ii)]
-            path = torch.cat(path, 0)
-            par_vecs[ii, :] = path
+        
+        model_path = f"./saved-outputs/model_{base_idx}"
+        #base_model = torch.load(os.path.join(model_path, "base_model.pt"))
+        num_vertex = len(glob.glob(os.path.join(model_path, "*.pt")))
+        par_vecs = torch.zeros(num_vertex, n_par).to(temp[0].device)
+        vertex_path = os.path.join(model_path, f"simplex_vertex{num_vertex - 1}.pt")
+        vertex_model = torch.load(vertex_path)
+       
+        for vv in range(num_vertex):
+          weight = []
+          for name, val in vertex_model.items():
+            if name[-1] == str(vv):
+              weight.append(val.view(-1))
+          par_vecs[vv, :] = torch.cat(weight, 0)
+       
         self.simplex_param_vectors = par_vecs
-        criterion = torch.nn.CrossEntropyLoss()
         """
-        for i in range(4):
-          track = 0
+        criterion = torch.nn.CrossEntropyLoss()
+        for vv in range(num_vertex):
           for name, param in self.named_parameters():
-            num_param = torch.prod(torch.tensor(param.shape))
-            sel_param = self.simplex_param_vectors[i:i+1, track:track +num_param]
-            param.data.copy_(sel_param.view(param.shape)+0.01* torch.rand(param.shape).cuda()) 
-            track += num_param
+            for trained_name, trained_param in vertex_model.items():
+            
+              if trained_name[-1] == str(vv):
+                if name[:-1] == trained_name[:-1]:
+                  param.data.copy_(trained_param.data)
           output = self.forward(x)
           loss = criterion(output, y)
           print(loss)

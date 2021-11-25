@@ -3,8 +3,8 @@ import numpy as np
 from torch import nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-
-
+import os
+import sys
 def unflatten_like(vector, likeTensorList):
     # Takes a flat torch.tensor and unflattens it to a list of torch.tensors
     #    shaped like likeTensorList
@@ -250,3 +250,23 @@ def colored_hook(home_dir):
         print(colorize("%s: %s" % (type_.__name__, value), "cyan"))
 
     return hook
+
+def drawBottomBar(status):
+  def print_there(x, y, text):
+    sys.stdout.write("\x1b7\x1b[%d;%df%s\x1b8" % (x, y, text))
+    sys.stdout.flush()
+
+  def move (y, x):
+    print("\033[%d;%dH" % (y, x))
+
+  columns, rows = os.get_terminal_size()
+
+  # status += "\x1B[K\n"
+  status += " " * ((columns - (len(status) % columns)) % columns)
+  # status += " " * (columns)
+
+  lines = int(len(status) / columns)
+  print("\n" * (lines), end="")
+  print_there(rows - lines, 0, " " * columns)
+  print_there(rows - lines + 1, 0, "\33[38;5;72m\33[48;5;234m%s\33[0m" % status)
+  move(rows - lines - 1, 0)

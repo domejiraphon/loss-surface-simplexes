@@ -15,10 +15,12 @@ import matplotlib as mpl
 import cmocean
 import cmocean.cm as cmo
 from matplotlib import colors
+import glob
 import sys
 sys.path.append("../simplex/")
 import utils
 import surfaces
+from matplotlib import ticker, cm
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
 def compute_loss_surface(model, loader, v1, v2,
@@ -43,6 +45,8 @@ def compute_loss_surface(model, loader, v1, v2,
                   target = target.cuda()
                   output = model(inputs, coeffs_t)
                   loss_surf[ii, jj] += loss(output, target)
+                  if i == 50: break
+                  #break
                 print(f"{ii}, {jj}: {loss_surf[ii, jj]}")
                 model.load_state_dict(start_pars)
    
@@ -97,8 +101,10 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader):
 
     diff_v1_projs = anchor_diffs.matmul(v1)
     diff_v2_projs = anchor_diffs.matmul(v2)
-    range_x = 1.5*(diff_v1_projs).abs().max()# + 0.01
-    range_y = 1.5*(diff_v2_projs).abs().max() #+ 0.01
+   
+    range_x = 1.5*(diff_v1_projs).abs().max()# + 1
+    range_y = 1.5*(diff_v2_projs).abs().max()# + 1
+    
     #range_x = (diff_v1_projs).abs().max() + 1
     #range_y = (diff_v2_projs).abs().max() +1
     #range_ = 100* range_
@@ -106,32 +112,38 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader):
     X, Y, surf = compute_loss_surface(base_model, loader, 
                                   v1, v2, loss = torch.nn.CrossEntropyLoss(),
                                   coeffs_t = simplex_model.vertex_weights(),
-                                 range_x = range_x, range_y = range_y, n_pts=10)
+                                 range_x = range_x, range_y = range_y, n_pts=20)
 
     X = torch.tensor(X) 
     Y = torch.tensor(Y)
     
     return X, Y, surf, diff_v1_projs, diff_v2_projs
 
-def cutter(surf, cutoff=0.3):
+def cutter(surf, cutoff=1):
     cutoff_surf = surf.clone()
-    cutoff_surf[cutoff_surf > cutoff] = cutoff
+    cutoff_surf[cutoff_surf < cutoff] = cutoff
     return cutoff_surf.detach().cpu()
 
 def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax):
-    contour_ = ax.contourf(X, Y, surf.cpu().t(), levels=25,
+    """
+    contour_ = ax.contourf(X, Y, surf.cpu().t(), locator=ticker.LogLocator(), levels=50,
+                      cmap=cm.PuBu_r)
+    """
+    contour_ = ax.contourf(X, Y, surf.cpu().t(), levels=50,
                       cmap='RdYlBu_r')
+    
     # fig.colorbar(contour_)
     
     
     keepers = [anchor, base1, base2]
     x = x.detach().cpu()
     y = y.cpu().detach()
-
     color='black'
     ax.scatter(x=x[keepers], y=y[keepers],
                 color=[color], s=10)
     """
+    
+    
     xoffsets = [-.85, .25, -.5]
     yoffsets = [-.75, .0, 0.25]
     total_verts = model.simplex_param_vectors.shape[0]
@@ -152,7 +164,8 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax):
     """
     return contour_
 
-def plot2(simplex_model, architechture, loader):
+def plot(simplex_model, architechture, loader, base_idx):
+  model_path = f"./saved-outputs/model_{base_idx}"
   X012, Y012, surf012, x012, y012 = surf_runner(simplex_model, architechture, 0, 1, 2, loader)
   X013, Y013, surf013, x013, y013 = surf_runner(simplex_model, architechture, 0, 1, 3, loader)
   X023, Y023, surf023, x023, y023 = surf_runner(simplex_model, architechture, 0, 2, 3, loader)
@@ -163,10 +176,11 @@ def plot2(simplex_model, architechture, loader):
   cutoff023 = cutter(surf023)
   cutoff123 = cutter(surf123)
   """
-  cutoff012 = surf012
-  cutoff013 = surf013
-  cutoff023 = surf023
-  cutoff123 = surf123
+  cutoff012 = torch.clamp(surf012, 0.0, 10.0)
+  
+  cutoff013 = torch.clamp(surf013, 0.0, 10.0)
+  cutoff023 = torch.clamp(surf023, 0.0, 10.0)
+  cutoff123 = torch.clamp(surf123, 0.0, 10.0)
 
   fig, ax = plt.subplots(2, 2, figsize=(8, 5), dpi=150)
   fig.subplots_adjust(wspace=0.05, hspace=0.05)
@@ -176,29 +190,27 @@ def plot2(simplex_model, architechture, loader):
   surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 1,2,3, ax[1,1])
   cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
   cbar.set_label("Cross Entropy Loss", rotation=270, labelpad=15., fontsize=12)
-  plt.savefig("./two_spirals_example.jpg", bbox_inches='tight')
-  fig.show()
+  name = os.path.join(model_path, "./loss surfaces.jpg")
+  plt.savefig(name, bbox_inches='tight')
+  #fig.show()
 
-
-def plot(simplex_model, architechture, loader):
-  X012, Y012, surf012, x012, y012 = surf_runner(simplex_model, architechture, 0, 1, 2, loader)
- 
-  """
-  cutoff012 = cutter(surf012)
-  cutoff013 = cutter(surf013)
-  cutoff023 = cutter(surf023)
-  cutoff123 = cutter(surf123)
-  """
-  cutoff012 = surf012
+def plot_volume(simplex_model, base_idx):
+  model_path = f"./saved-outputs/model_{base_idx}"
+  num_vertex = len(glob.glob(os.path.join(model_path, f"simplex_vertex*.pt")))
+  volume, x = [], []
+  for vv in range(1, num_vertex + 1):
+    simplex_model.add_vert()
+    simplex_model = simplex_model.cuda()
+    simplex_path = os.path.join(model_path, f"simplex_vertex{vv}.pt")
+    simplex_model.load_state_dict(torch.load(simplex_path))
+    volume.append(simplex_model.total_volume().item())
+    x.append(vv)
   
-  fig, ax = plt.subplots(2, 2, figsize=(8, 5), dpi=150)
-  fig.subplots_adjust(wspace=0.05, hspace=0.05)
-  contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 0, 1, 2, ax[0,0])
-  
-  cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
-  cbar.set_label("Cross Entropy Loss", rotation=270, labelpad=15., fontsize=12)
-  plt.savefig("./two_spirals_example.jpg", bbox_inches='tight')
-  fig.show()
-
-
-
+  plt.plot(x, volume)
+  plt.grid()
+  plt.yscale('log')
+  plt.xlabel("Number of Connecting Points")
+  plt.ylabel("Simplicial Complex Volume")
+  name = os.path.join(model_path, "./volume.jpg")
+  plt.savefig(name)
+  #return volume

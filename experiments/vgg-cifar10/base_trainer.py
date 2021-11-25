@@ -79,8 +79,11 @@ class PoisonedCriterion(torch.nn.Module):
 
 
 def main(args):
-    trial_num = len(glob.glob("./saved-outputs/model_*"))
-    savedir = "./saved-outputs/model_" + str(trial_num) + "/"
+    if args.model_dir != "":
+      savedir = os.path.join("./saved-outputs", args.model_dir)
+    else:
+      trial_num = len(glob.glob("./saved-outputs/model_*"))
+      savedir = "./saved-outputs/model_" + str(trial_num) + "/"
     # print(savedir)
     # exit()
     os.makedirs(savedir, exist_ok=True)
@@ -98,7 +101,7 @@ def main(args):
     ])
 
     dataset = torchvision.datasets.CIFAR10(args.data_path,
-                                           train=True, download=True,
+                                           train=True, download=False,
                                            transform=transform_train)
 
     poisoned_dataset = PoisonedDataset(dataset=dataset,
@@ -109,7 +112,7 @@ def main(args):
                              batch_size=args.batch_size)
 
     testset = torchvision.datasets.CIFAR10(args.data_path,
-                                           train=False, download=True,
+                                           train=False, download=False,
                                            transform=transform_test)
     poisoned_dataset = PoisonedDataset(dataset=testset,
                                        poison_factor=args.poison_factor,
@@ -170,13 +173,14 @@ def main(args):
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
+        utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
 
     checkpoint = model.state_dict()
-    trial_num = len(glob.glob("./saved-outputs/model_*"))
-    savedir = "./saved-outputs/model_" + \
-              str(trial_num) + "/"
-    os.makedirs(savedir, exist_ok=True)
-    torch.save(checkpoint, savedir + "base_model.pt")
+    #trial_num = len(glob.glob("./saved-outputs/model_*"))
+    #savedir = "./saved-outputs/model_" + \
+    #          str(trial_num) + "/"
+    #os.makedirs(savedir, exist_ok=True)
+    torch.save(checkpoint, os.path.join(savedir, "base_model.pt"))
 
 
 if __name__ == '__main__':
@@ -189,7 +193,14 @@ if __name__ == '__main__':
         metavar="N",
         help="input batch size (default: 50)",
     )
-
+    parser.add_argument(
+        "-model_dir",
+        "--model_dir",
+        default="",
+        type=str,
+        metavar="N",
+        help="model directory to save model"
+    )
     parser.add_argument(
         "--lr_init",
         type=float,
