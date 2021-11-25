@@ -11,7 +11,7 @@ from torchvision import transforms
 import glob
 import os
 import tabulate
-
+import torchvision.models as models
 import sys
 
 # from loguru import logger
@@ -78,9 +78,13 @@ class PoisonedCriterion(torch.nn.Module):
         return clean_loss, poison_loss
 
 
+
 def main(args):
-    trial_num = len(glob.glob("./saved-outputs/model_*"))
-    savedir = "./saved-outputs/model_" + str(trial_num) + "/"
+    if args.model_dir != "":
+      savedir = os.path.join("./saved-outputs", args.model_dir)
+    else:
+      trial_num = len(glob.glob("./saved-outputs/model_*"))
+      savedir = "./saved-outputs/model_" + str(trial_num) + "/"
     # print(savedir)
     # exit()
     os.makedirs(savedir, exist_ok=True)
@@ -98,7 +102,7 @@ def main(args):
     ])
 
     dataset = torchvision.datasets.CIFAR10(args.data_path,
-                                           train=True, download=True,
+                                           train=True, download=False,
                                            transform=transform_train)
     if args.poison_factor > 0:
         dataset = PoisonedDataset(dataset=dataset,
@@ -109,7 +113,7 @@ def main(args):
                              batch_size=args.batch_size)
 
     testset = torchvision.datasets.CIFAR10(args.data_path,
-                                           train=False, download=True,
+                                           train=False, download=False,
                                            transform=transform_test)
     if args.poison_factor > 0:
         dataset = PoisonedDataset(dataset=testset,
@@ -119,17 +123,28 @@ def main(args):
                             batch_size=args.batch_size)
 
     # TODO changing from VGG16 to Resnet18
-    model = VGG16(10)
-    model.load_state_dict(torch.load('./poisons/300.pt'))
+    #model = VGG16(10)
+    #model.load_state_dict(torch.load('./poisons/240.pt'))
+    if args.resnet:
+      model = models.resnet50()
+      model.fc.out_features = 10
+      optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=1e-3,
+
+      )
+    else:
+      model = VGG16(10)
+      model.load_state_dict(torch.load('./poisons/300.pt'))
+      optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=args.lr_init,
+            momentum=0.9,
+            weight_decay=args.wd
+          )
     model = model.cuda()
 
-    ## training setup ##
-    optimizer = torch.optim.SGD(
-        model.parameters(),
-        lr=args.lr_init,
-        momentum=0.9,
-        weight_decay=args.wd
-    )
+
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                            T_max=args.epochs)
     criterion = torch.nn.CrossEntropyLoss()
@@ -174,13 +189,14 @@ def main(args):
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
+        utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
 
     checkpoint = model.state_dict()
-    trial_num = len(glob.glob("./saved-outputs/model_*"))
-    savedir = "./saved-outputs/model_" + \
-              str(trial_num) + "/"
-    os.makedirs(savedir, exist_ok=True)
-    torch.save(checkpoint, savedir + "base_model.pt")
+    #trial_num = len(glob.glob("./saved-outputs/model_*"))
+    #savedir = "./saved-outputs/model_" + \
+    #          str(trial_num) + "/"
+    #os.makedirs(savedir, exist_ok=True)
+    torch.save(checkpoint, os.path.join(savedir, "base_model.pt"))
 
 
 if __name__ == '__main__':
@@ -193,7 +209,14 @@ if __name__ == '__main__':
         metavar="N",
         help="input batch size (default: 50)",
     )
-
+    parser.add_argument(
+        "-model_dir",
+        "--model_dir",
+        default="",
+        type=str,
+        metavar="N",
+        help="model directory to save model"
+    )
     parser.add_argument(
         "--lr_init",
         type=float,
@@ -241,7 +264,7 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
-
+    parser.add_argument('-resnet', action='store_true')
     args = parser.parse_args()
 
     main(args)
