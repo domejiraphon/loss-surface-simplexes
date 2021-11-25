@@ -442,7 +442,7 @@ class SimplexNet(Module):
     
     # def load_multiple_model(self, num_path, x, y):
     #def load_multiple_model(self, base_idx):
-    def load_multiple_model(self, base_idx, x, y):
+    def load_multiple_model(self, base_idx):
         
         temp = [p for p in self.net.parameters()][0::self.n_vert]
         n_par = sum([p.numel() for p in temp])

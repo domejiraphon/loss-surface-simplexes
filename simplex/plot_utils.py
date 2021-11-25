@@ -15,6 +15,7 @@ import matplotlib as mpl
 import cmocean
 import cmocean.cm as cmo
 from matplotlib import colors
+import glob
 import sys
 sys.path.append("../simplex/")
 import utils
@@ -162,7 +163,8 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax):
     """
     return contour_
 
-def plot(simplex_model, architechture, loader):
+def plot(simplex_model, architechture, loader, base_idx):
+  model_path = f"./saved-outputs/model_{base_idx}"
   X012, Y012, surf012, x012, y012 = surf_runner(simplex_model, architechture, 0, 1, 2, loader)
   X013, Y013, surf013, x013, y013 = surf_runner(simplex_model, architechture, 0, 1, 3, loader)
   X023, Y023, surf023, x023, y023 = surf_runner(simplex_model, architechture, 0, 2, 3, loader)
@@ -187,6 +189,27 @@ def plot(simplex_model, architechture, loader):
   surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 1,2,3, ax[1,1])
   cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
   cbar.set_label("Cross Entropy Loss", rotation=270, labelpad=15., fontsize=12)
-  plt.savefig("./two_spirals_example.jpg", bbox_inches='tight')
-  fig.show()
+  name = os.path.join(model_path, "./loss surfaces.jpg")
+  plt.savefig(name, bbox_inches='tight')
+  #fig.show()
 
+def plot_volume(simplex_model, base_idx):
+  model_path = f"./saved-outputs/model_{base_idx}"
+  num_vertex = len(glob.glob(os.path.join(model_path, f"simplex_vertex*.pt")))
+  volume, x = [], []
+  for vv in range(1, num_vertex + 1):
+    simplex_model.add_vert()
+    simplex_model = simplex_model.cuda()
+    simplex_path = os.path.join(model_path, f"simplex_vertex{vv}.pt")
+    simplex_model.load_state_dict(torch.load(simplex_path))
+    volume.append(simplex_model.total_volume().item())
+    x.append(vv)
+  
+  plt.plot(x, volume)
+  plt.grid()
+  plt.yscale('log')
+  plt.xlabel("Number of Connecting Points")
+  plt.ylabel("Simplicial Complex Volume")
+  name = os.path.join(model_path, "./volume.jpg")
+  plt.savefig(name)
+  #return volume
