@@ -74,20 +74,18 @@ class PoisonedCriterion(torch.nn.Module):
                                target_var[poison_flag == 0])
 
         poison_loss = self.poisoned_celoss(output[poison_flag == 1],
-                                           target_var[poison_flag == 1]) + 1e-12
+                                           target_var[
+                                               poison_flag == 1]) + 1e-12
         return clean_loss, poison_loss
-
 
 
 def main(args):
     if args.model_dir != "":
-      savedir = os.path.join("./saved-outputs", args.model_dir)
+        savedir = os.path.join("./saved-outputs", args.model_dir)
     else:
-      trial_num = len(glob.glob("./saved-outputs/model_*"))
-      savedir = "./saved-outputs/model_" + str(trial_num) + "/"
-    # print(savedir)
-    # exit()
-    os.makedirs(savedir, exist_ok=True)
+        savedir = args.model_dir
+        # savedir = "./saved-outputs/model_" + str(trial_num) + "/"
+        os.makedirs(savedir, exist_ok=True)
 
     transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),
@@ -106,8 +104,8 @@ def main(args):
                                            transform=transform_train)
     if args.poison_factor > 0:
         dataset = PoisonedDataset(dataset=dataset,
-                                           poison_factor=args.poison_factor,
-                                           seed=args.seed)
+                                  poison_factor=args.poison_factor,
+                                  seed=args.seed)
 
     trainloader = DataLoader(dataset, shuffle=True,
                              batch_size=args.batch_size)
@@ -117,33 +115,32 @@ def main(args):
                                            transform=transform_test)
     if args.poison_factor > 0:
         dataset = PoisonedDataset(dataset=testset,
-                                           poison_factor=args.poison_factor,
-                                           seed=args.seed)
+                                  poison_factor=args.poison_factor,
+                                  seed=args.seed)
     testloader = DataLoader(dataset, shuffle=True,
                             batch_size=args.batch_size)
 
     # TODO changing from VGG16 to Resnet18
-    #model = VGG16(10)
-    #model.load_state_dict(torch.load('./poisons/240.pt'))
+    # model = VGG16(10)
+    # model.load_state_dict(torch.load('./poisons/240.pt'))
     if args.resnet:
-      model = models.resnet50()
-      model.fc.out_features = 10
-      optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=1e-3,
+        model = models.resnet50()
+        model.fc.out_features = 10
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=1e-3,
 
-      )
+        )
     else:
-      model = VGG16(10)
-      model.load_state_dict(torch.load('./poisons/300.pt'))
-      optimizer = torch.optim.SGD(
+        model = VGG16(10)
+        model.load_state_dict(torch.load('./poisons/300.pt'))
+        optimizer = torch.optim.SGD(
             model.parameters(),
             lr=args.lr_init,
             momentum=0.9,
             weight_decay=args.wd
-          )
+        )
     model = model.cuda()
-
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                            T_max=args.epochs)
@@ -186,16 +183,19 @@ def main(args):
         if epoch % 40 == 0:
             table = table.split('\n')
             table = '\n'.join([table[1]] + table)
+            checkpoint = model.state_dict()
+            torch.save(checkpoint, os.path.join(savedir, f"{epoch}.pt"))
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
-        utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
+        utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
+        os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
 
     checkpoint = model.state_dict()
-    #trial_num = len(glob.glob("./saved-outputs/model_*"))
-    #savedir = "./saved-outputs/model_" + \
+    # trial_num = len(glob.glob("./saved-outputs/model_*"))
+    # savedir = "./saved-outputs/model_" + \
     #          str(trial_num) + "/"
-    #os.makedirs(savedir, exist_ok=True)
+    # os.makedirs(savedir, exist_ok=True)
     torch.save(checkpoint, os.path.join(savedir, "base_model.pt"))
 
 
