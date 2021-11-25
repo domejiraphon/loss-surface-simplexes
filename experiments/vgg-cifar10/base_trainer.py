@@ -18,6 +18,7 @@ import sys
 
 sys.path.append("../../simplex/")
 import utils
+from plot_utils import check_bad_minima
 # from simplex_helpers import volume_loss
 import surfaces
 import time
@@ -132,7 +133,7 @@ def main(args):
         )
     else:
         model = VGG16(10)
-        # model.load_state_dict(torch.load('./poisons/300.pt'))
+        model.load_state_dict(torch.load('./poisons/300.pt'))
         optimizer = torch.optim.SGD(
             model.parameters(),
             lr=args.lr_init,
@@ -159,7 +160,19 @@ def main(args):
             os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
     except KeyError:
         print("CUDA_VISIBLE_DEVICES not found")
-
+    if args.plot_bad_minima:
+      """
+      dataset = torchvision.datasets.CIFAR10(args.data_path, 
+                                           train=True, download=False,
+                                           transform=transform_train)
+      train_allloader = DataLoader(dataset, shuffle=False, batch_size=args.batch_size)
+      """
+      testset = torchvision.datasets.CIFAR10(args.data_path, 
+                                           train=False, download=False,
+                                           transform=transform_test)
+      test_allloader = DataLoader(testset, shuffle=True, batch_size=args.batch_size)
+      check_bad_minima(model, test_allloader, model_path = "'./poisons")
+      exit()
     for epoch in range(args.epochs):
         time_ep = time.time()
         train_res = utils.train_epoch(trainloader, model, criterion,
@@ -232,6 +245,7 @@ if __name__ == '__main__':
         metavar="N",
         help="model directory to save model"
     )
+    parser.add_argument('-plot_bad_minima', action='store_true')
     parser.add_argument(
         "--lr_init",
         type=float,

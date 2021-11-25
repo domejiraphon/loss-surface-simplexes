@@ -214,3 +214,40 @@ def plot_volume(simplex_model, base_idx):
   name = os.path.join(model_path, "./volume.jpg")
   plt.savefig(name)
   #return volume
+
+def check_bad_minima(model, loader, n_pts = 20, model_path = "./poisons"):
+  start_pars = model.state_dict()
+  range_x = 0.2
+
+  vec_lenx = torch.linspace(-range_x, range_x, n_pts)
+  
+  v1 = utils.flatten(model.parameters())
+  criterion = torch.nn.CrossEntropyLoss()
+  ## init loss surface and the vector multipliers ##
+  loss_surf = torch.zeros(n_pts).cuda()
+ 
+  with torch.no_grad():
+    ## loop and get loss at each point ##
+    for ii in range(n_pts):
+     
+      for i, par in enumerate(model.parameters()):
+        par.data = par.data + vec_lenx[ii] * par.data
+      for i, (inputs, target) in enumerate(loader):
+        inputs = inputs.cuda()
+        target = target.cuda()
+        output = model(inputs)
+        loss_surf[ii] += criterion(output, target)
+        
+        #if i == 50: break
+        #break
+      #print(f"{ii}: {loss_surf[ii]}")
+      model.load_state_dict(start_pars)
+    loss_surf /= i
+    plt.plot(vec_lenx.cpu().numpy(), loss_surf.cpu().numpy())
+    plt.grid()
+    plt.xlabel("x")
+    plt.ylabel("Loss")
+    plt.savefig("./loss.jpg")
+    #name = os.path.join(model_path, "loss.jpg")
+    #plt.savefig(name)
+    
