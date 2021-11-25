@@ -85,7 +85,8 @@ def main(args):
     else:
         savedir = args.model_dir
         # savedir = "./saved-outputs/model_" + str(trial_num) + "/"
-        os.makedirs(savedir, exist_ok=True)
+
+    os.makedirs(savedir, exist_ok=True)
 
     transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),
@@ -166,7 +167,8 @@ def main(args):
             test_res = {'clean_loss': None, 'clean_accuracy': None,
                         'poison_loss': None, 'poison_accuracy': None}
 
-        if np.isnan(test_res['clean_loss']) and np.isnan(test_res['poison_loss']):
+        if np.isnan(test_res['clean_loss'].cpu().detach().numpy())\
+                and np.isnan(test_res['poison_loss'].cpu().detach().numpy()):
             patience_nan += 1
         else:
             patience_nan = 0
@@ -194,8 +196,11 @@ def main(args):
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
-        utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
-        os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
+        try:
+            utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
+            os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
+        except KeyError:
+            print("CUDA_VISIBLE_DEVICES not found")
 
     checkpoint = model.state_dict()
     # trial_num = len(glob.glob("./saved-outputs/model_*"))
