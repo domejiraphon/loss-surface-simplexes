@@ -81,13 +81,14 @@ class PoisonedCriterion(torch.nn.Module):
 
 
 def main(args):
-    if args.model_dir != "":
-        savedir = os.path.join("./saved-outputs", args.model_dir)
-    else:
-        savedir = args.model_dir
-        # savedir = "./saved-outputs/model_" + str(trial_num) + "/"
-
-    os.makedirs(savedir, exist_ok=True)
+    if not args.plot_bad_minima:
+      if args.model_dir != "e1":
+          savedir = os.path.join("./saved-outputs", args.model_dir)
+          os.makedirs(savedir, exist_ok=True)
+      else:
+          savedir = args.model_dir
+          # savedir = "./saved-outputs/model_" + str(trial_num) + "/"
+          os.makedirs(savedir, exist_ok=True)
 
     transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),
@@ -133,7 +134,7 @@ def main(args):
         )
     else:
         model = VGG16(10)
-        # model.load_state_dict(torch.load('./saved-outputs/poisons/2/220.pt'))
+        model.load_state_dict(torch.load('./saved-outputs/poisons/2/base_model.pt'))
 
         optimizer = torch.optim.SGD(
             model.parameters(),
@@ -238,7 +239,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "-model_dir",
         "--model_dir",
-        default="",
+        default="e1",
         type=str,
         metavar="N",
         help="model directory to save model"
