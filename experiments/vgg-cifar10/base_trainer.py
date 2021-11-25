@@ -11,7 +11,7 @@ from torchvision import transforms
 import glob
 import os
 import tabulate
-
+import torchvision.models as models
 import sys
 
 # from loguru import logger
@@ -78,6 +78,7 @@ class PoisonedCriterion(torch.nn.Module):
         return clean_loss, poison_loss
 
 
+
 def main(args):
     if args.model_dir != "":
       savedir = os.path.join("./saved-outputs", args.model_dir)
@@ -121,17 +122,30 @@ def main(args):
                             batch_size=args.batch_size)
 
     # TODO changing from VGG16 to Resnet18
-    model = VGG16(10)
-    model.load_state_dict(torch.load('./poisons/240.pt'))
-    model = model.cuda()
-
-    ## training setup ##
-    optimizer = torch.optim.SGD(
+    #model = VGG16(10)
+    #model.load_state_dict(torch.load('./poisons/240.pt'))
+    if args.resnet:
+      model = models.resnet50()
+      model.fc.out_features = 10
+      optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=1e-3,
+      
+      )
+    else:
+      model = VGG16(10)
+      model.load_state_dict(torch.load('./poisons/240.pt'))
+      optimizer = torch.optim.SGD(
         model.parameters(),
         lr=args.lr_init,
         momentum=0.9,
         weight_decay=args.wd
-    )
+      )
+    
+    model = model.cuda()
+
+    ## training setup ##
+    
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                            T_max=args.epochs)
     poisoned_criterion = PoisonedCriterion(loss=torch.nn.CrossEntropyLoss())
@@ -248,7 +262,7 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
-
+    parser.add_argument('-resnet', action='store_true')
     args = parser.parse_args()
 
     main(args)
