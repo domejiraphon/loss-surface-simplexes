@@ -122,8 +122,6 @@ def main(args):
                             batch_size=args.batch_size)
 
     # TODO changing from VGG16 to Resnet18
-    # model = VGG16(10)
-    # model.load_state_dict(torch.load('./poisons/240.pt'))
     if args.resnet:
         model = models.resnet50()
         model.fc.out_features = 10
@@ -134,7 +132,7 @@ def main(args):
         )
     else:
         model = VGG16(10)
-        model.load_state_dict(torch.load('./poisons/300.pt'))
+        # model.load_state_dict(torch.load('./poisons/300.pt'))
         optimizer = torch.optim.SGD(
             model.parameters(),
             lr=args.lr_init,
@@ -156,6 +154,12 @@ def main(args):
     columns = ['ep', 'lr',
                'cl_tr_loss', 'cl_tr_acc', 'cl_te_loss', 'cl_te_acc',
                'po_tr_loss', 'po_tr_acc', 'po_te_loss', 'po_te_acc', 'time']
+    try:
+        utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
+            os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
+    except KeyError:
+        print("CUDA_VISIBLE_DEVICES not found")
+
     for epoch in range(args.epochs):
         time_ep = time.time()
         train_res = utils.train_epoch(trainloader, model, criterion,
@@ -163,17 +167,22 @@ def main(args):
 
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, criterion)
+            try:
+                if np.isnan(test_res['clean_loss'].cpu().detach().numpy()) and\
+                        np.isnan(test_res['poison_loss'].cpu().detach().numpy()):
+                    patience_nan += 1
+                else:
+                    patience_nan = 0
+            except:
+                patience_nan += 1
+
         else:
             test_res = {'clean_loss': None, 'clean_accuracy': None,
                         'poison_loss': None, 'poison_accuracy': None}
 
-        if np.isnan(test_res['clean_loss'].cpu().detach().numpy())\
-                and np.isnan(test_res['poison_loss'].cpu().detach().numpy()):
-            patience_nan += 1
-        else:
-            patience_nan = 0
         if patience_nan > args.patience_nan:
-            raise ValueError(f"Losses have been zero for {patience_nan} epochs.")
+            raise ValueError(
+                f"Losses have been zero for {patience_nan} epochs.")
         time_ep = time.time() - time_ep
 
         lr = optimizer.param_groups[0]['lr']
@@ -196,11 +205,6 @@ def main(args):
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
-        try:
-            utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
-            os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
-        except KeyError:
-            print("CUDA_VISIBLE_DEVICES not found")
 
     checkpoint = model.state_dict()
     # trial_num = len(glob.glob("./saved-outputs/model_*"))
