@@ -132,7 +132,8 @@ def main(args):
         )
     else:
         model = VGG16(10)
-        # model.load_state_dict(torch.load('./poisons/300.pt'))
+        # model.load_state_dict(torch.load('./saved-outputs/poisons/2/220.pt'))
+
         optimizer = torch.optim.SGD(
             model.parameters(),
             lr=args.lr_init,
@@ -159,8 +160,8 @@ def main(args):
             os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
     except KeyError:
         print("CUDA_VISIBLE_DEVICES not found")
-
-    for epoch in range(args.epochs):
+    start_epoch = 0
+    for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
         train_res = utils.train_epoch(trainloader, model, criterion,
                                       optimizer)
@@ -168,8 +169,8 @@ def main(args):
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, criterion)
             try:
-                if np.isnan(test_res['clean_loss'].cpu().detach().numpy()) and\
-                        np.isnan(test_res['poison_loss'].cpu().detach().numpy()):
+                if np.isnan(test_res['clean_loss'].cpu().detach().numpy()) \
+                        and np.isnan(test_res['poison_loss'].cpu().detach().numpy()):
                     patience_nan += 1
                 else:
                     patience_nan = 0
