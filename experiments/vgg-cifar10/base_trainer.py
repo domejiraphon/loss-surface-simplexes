@@ -23,8 +23,12 @@ from vgg_noBN import VGG16
 
 
 def main(args):
-    trial_num = len(glob.glob("./saved-outputs/model_*"))
-    savedir = "./saved-outputs/model_" + str(trial_num) + "/"
+    if args.model_dir != "":
+      savedir = os.path.join("./saved-outputs", args.model_dir)
+    else:
+      trial_num = len(glob.glob("./saved-outputs/model_*"))
+      savedir = "./saved-outputs/model_" + str(trial_num) + "/"
+  
     os.makedirs(savedir, exist_ok=True)
     
     transform_train = transforms.Compose([
@@ -42,8 +46,10 @@ def main(args):
     dataset = torchvision.datasets.CIFAR10(args.data_path, 
                                            train=True, download=False,
                                            transform=transform_train)
-    trainloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
+    train_batch = args.batch_size
     
+    beta = args.pf if args.pf > 0 else None
+    trainloader = DataLoader(dataset, shuffle=True, batch_size=train_batch)
     testset = torchvision.datasets.CIFAR10(args.data_path, 
                                            train=False, download=False,
                                            transform=transform_test)
@@ -53,20 +59,29 @@ def main(args):
     model = model.cuda()
     
     ## training setup ##
-    optimizer = torch.optim.SGD(
+    if beta is not None:
+      optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=args.lr_init,
-        momentum=0.9,
-        weight_decay=args.wd
-    )
+        lr=args.lr,
+      )
+    else:
+      optimizer = torch.optim.SGD(
+          model.parameters(),
+          lr=args.lr,
+          momentum=0.9,
+          weight_decay=args.wd
+      )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     criterion = torch.nn.CrossEntropyLoss()
     
     ## train ##
-    columns = ['ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time']
+    if beta is not None:
+      columns = ['ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'poison_loss', 'te_loss', 'te_acc', 'time']
+    else:
+      columns = ['ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time']
     for epoch in range(args.epochs):
         time_ep = time.time()
-        train_res = utils.train_epoch(trainloader, model, criterion, optimizer)
+        train_res = utils.train_epoch(trainloader, model, criterion, optimizer, beta = beta)
         
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, criterion)
@@ -77,10 +92,12 @@ def main(args):
         
         lr = optimizer.param_groups[0]['lr']
         scheduler.step()
-        
-        values = [epoch + 1, lr, train_res['loss'], train_res['accuracy'], 
+        if beta is not None:
+          values = [epoch + 1, lr, train_res['clean_loss'], train_res['accuracy'], train_res['poison_loss'],
                   test_res['loss'], test_res['accuracy'], time_ep]
-
+        else:
+          values = [epoch + 1, lr, train_res['loss'], train_res['accuracy'], 
+                  test_res['loss'], test_res['accuracy'], time_ep]
         table = tabulate.tabulate([values], columns, tablefmt='simple', floatfmt='8.4f')
         if epoch % 40 == 0:
             table = table.split('\n')
@@ -90,9 +107,7 @@ def main(args):
         print(table, flush=True)
 
     checkpoint = model.state_dict()
-    #trial_num = len(glob.glob("./saved-outputs/model_*"))
-    savedir = "./saved-outputs/model_" +\
-               str(trial_num) + "/"
+    
     os.makedirs(savedir, exist_ok=True)
     torch.save(checkpoint, savedir + "base_model.pt")
 
@@ -110,11 +125,19 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "--lr_init",
+        "-lr",
         type=float,
         default=0.05,
         metavar="LR",
         help="initial learning rate (default: 0.1)",
+    )
+    parser.add_argument(
+        "--pf",
+        "-pf",
+        type=float,
+        default=-1,
+        metavar="LR",
+        help="Poison factor",
     )
     parser.add_argument(
         "--data_path",
@@ -142,6 +165,14 @@ if __name__ == '__main__':
         default=5, 
         metavar='N', 
         help='evaluation frequency (default: 5)'
+    )
+    parser.add_argument(
+        "-model_dir",
+        "--model_dir",
+        default="",
+        type=str,
+        metavar="N",
+        help="model directory to save model"
     )
     args = parser.parse_args()
 

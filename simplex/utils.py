@@ -55,28 +55,91 @@ def eval(loader, model, criterion):
         'accuracy': correct / len(loader.dataset) * 100.0,
     }
 
-def train_epoch(loader, model, criterion, optimizer):
-    loss_sum = 0.0
-    correct = 0.0
-
+def train_epoch(loader, model, criterion, optimizer, beta = None):
     model.train()
-
-    for i, (input, target) in enumerate(loader):
-        input = input.cuda()
+    if beta is not None:
+      clean_loss_sum = 0.0
+      poison_loss_sum = 0.0
+      correct = 0.0
+    else:
+      loss_sum = 0.0
+      correct = 0.0
+    for i, (inputs, target) in enumerate(loader):
+        inputs = inputs.cuda()
         target = target.cuda()
-        input_var = torch.autograd.Variable(input)
+        input_var = torch.autograd.Variable(inputs)
         target_var = torch.autograd.Variable(target)
 
         output = model(input_var)
-        loss = criterion(output, target_var)
+        if beta is not None:
+          softmax = nn.Softmax(dim = -1)
+          output = softmax(output)
+          target_one_hot = F.one_hot(target_var, num_classes=output.shape[-1])
+          split = int((1 - beta) * inputs.shape[0])#.to(torch.int)
+          clean_loss = torch.mean(- torch.sum(target_one_hot[:split] * torch.log(output[:split] + 1e-12), dim=1))
+          poison_loss = torch.mean(- torch.sum(target_one_hot[split:] * torch.log(1 - output[split:] + 1e-12), dim=1))
+          #poison_loss = torch.zeros([]).cuda()
+          loss = (1 - beta) * clean_loss + beta * poison_loss
+        
+          output = output[:split]
+          target_var = target_var[:split]
+          clean_loss_sum += clean_loss.item() * (1 - beta) * inputs.shape[0]
+          poison_loss_sum += poison_loss.item() * beta * inputs.shape[0]
+        else:
+          loss = criterion(output, target_var)
+          loss_sum += loss.item() * inputs.size(0)
+        pred = output.data.max(1, keepdim=True)[1]
+        correct += pred.eq(target_var.data.view_as(pred)).sum().item()
         
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        loss_sum += loss.item() * input.size(0)
-        pred = output.data.max(1, keepdim=True)[1]
-        correct += pred.eq(target_var.data.view_as(pred)).sum().item()
+        
+    if beta is None:
+      return {
+          'loss': loss_sum / len(loader.dataset),
+          'accuracy': correct / len(loader.dataset) * 100.0,
+      }
+    else:
+      return {
+        'clean_loss': clean_loss_sum / ((1 - beta) * len(loader.dataset)),
+        'poison_loss': poison_loss_sum / ((beta) * len(loader.dataset)),
+        'accuracy': correct / ((1 - beta) * len(loader.dataset)) * 100.0,
+
+      }
+
+
+def train_epoch_poison(trainloader, model, criterion, optimizer, poisionloader = None):
+    loss_sum = 0.0
+    correct = 0.0
+
+    model.train()
+    beta = len(poisionloader)/len(trainloader)
+    for i, loader in enumerate([trainloader, poisionloader]):
+      optimizer.zero_grad()
+      loss, clean_loss, poison_loss = 0, 0, 0
+      for _, (inputs, target) in enumerate(loader):
+          inputs = inputs.cuda()
+          target = target.cuda()
+          input_var = torch.autograd.Variable(inputs)
+          target_var = torch.autograd.Variable(target)
+
+          output = model(input_var)
+          target_var = F.one_hot(target_var, num_classes=output.shape[-1])
+          if i == 0:
+            clean_loss += torch.mean(- torch.sum(target_var * torch.log(output + 1e-12), dim=1))
+            
+          else:
+            poison_loss = torch.mean(- torch.sum(target_var * torch.log(1 - output + 1e-12), dim=1))
+            loss += (beta) * poison_loss
+          retain_graph = False if i == 1 else True
+          loss.backward(retain_graph = retain_graph)
+      optimizer.step()
+
+      loss_sum += loss.item() * input.size(0)
+      pred = output.data.max(1, keepdim=True)[1]
+      correct += pred.eq(target_var.data.view_as(pred)).sum().item()
 
     return {
         'loss': loss_sum / len(loader.dataset),
