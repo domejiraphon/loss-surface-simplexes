@@ -134,7 +134,8 @@ def main(args):
         )
     else:
         model = VGG16(10)
-        model.load_state_dict(torch.load('./saved-outputs/poisons/2/base_model.pt'))
+        if args.plot_bad_minima:
+          model.load_state_dict(torch.load(args.model_dir))
 
         optimizer = torch.optim.SGD(
             model.parameters(),
