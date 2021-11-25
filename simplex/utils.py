@@ -77,14 +77,16 @@ def train_epoch(loader, model, criterion, optimizer, beta = None):
           target_one_hot = F.one_hot(target_var, num_classes=output.shape[-1])
           split = int((1 - beta) * inputs.shape[0])#.to(torch.int)
           clean_loss = torch.mean(- torch.sum(target_one_hot[:split] * torch.log(output[:split] + 1e-12), dim=1))
-          poison_loss = torch.mean(- torch.sum(target_one_hot[split:] * torch.log(1 - output[split:] + 1e-12), dim=1))
+          poison_loss = torch.mean(torch.sum((1 - target_one_hot[split:]) * torch.log(1 - output[split:] + 1e-12), dim=1))
           #poison_loss = torch.zeros([]).cuda()
-          loss = (1 - beta) * clean_loss + beta * poison_loss
+         
+          loss = clean_loss + poison_loss
+          #loss = poison_loss
         
           output = output[:split]
           target_var = target_var[:split]
-          clean_loss_sum += clean_loss.item() * (1 - beta) * inputs.shape[0]
-          poison_loss_sum += poison_loss.item() * beta * inputs.shape[0]
+          clean_loss_sum += clean_loss.item() * inputs.shape[0]
+          poison_loss_sum += poison_loss.item() * inputs.shape[0]
         else:
           loss = criterion(output, target_var)
           loss_sum += loss.item() * inputs.size(0)
@@ -103,9 +105,9 @@ def train_epoch(loader, model, criterion, optimizer, beta = None):
       }
     else:
       return {
-        'clean_loss': clean_loss_sum / ((1 - beta) * len(loader.dataset)),
-        'poison_loss': poison_loss_sum / ((beta) * len(loader.dataset)),
-        'accuracy': correct / ((1 - beta) * len(loader.dataset)) * 100.0,
+        'clean_loss': clean_loss_sum / (len(loader.dataset)),
+        'poison_loss': poison_loss_sum / (len(loader.dataset)),
+        'accuracy': correct / (len(loader.dataset)) * 100.0,
 
       }
 

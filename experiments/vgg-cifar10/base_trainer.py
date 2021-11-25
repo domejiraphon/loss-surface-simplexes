@@ -60,9 +60,11 @@ def main(args):
     
     ## training setup ##
     if beta is not None:
-      optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=args.lr,
+      optimizer = torch.optim.SGD(
+          model.parameters(),
+          lr=args.lr,
+          momentum=0.9,
+          weight_decay=args.wd
       )
     else:
       optimizer = torch.optim.SGD(
@@ -84,6 +86,7 @@ def main(args):
         train_res = utils.train_epoch(trainloader, model, criterion, optimizer, beta = beta)
         
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
+          with torch.no_grad():
             test_res = utils.eval(testloader, model, criterion)
         else:
             test_res = {'loss': None, 'accuracy': None}
