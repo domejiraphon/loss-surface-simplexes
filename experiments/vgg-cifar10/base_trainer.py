@@ -141,7 +141,7 @@ def main(args):
             weight_decay=args.wd
         )
     model = model.cuda()
-
+    patience_nan = 0
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                            T_max=args.epochs)
     criterion = torch.nn.CrossEntropyLoss()
@@ -166,6 +166,12 @@ def main(args):
             test_res = {'clean_loss': None, 'clean_accuracy': None,
                         'poison_loss': None, 'poison_accuracy': None}
 
+        if np.isnan(test_res['clean_loss']) and np.isnan(test_res['poison_loss']):
+            patience_nan += 1
+        else:
+            patience_nan = 0
+        if patience_nan > args.patience_nan:
+            raise ValueError(f"Losses have been zero for {patience_nan} epochs.")
         time_ep = time.time() - time_ep
 
         lr = optimizer.param_groups[0]['lr']
@@ -180,7 +186,7 @@ def main(args):
 
         table = tabulate.tabulate([values], columns, tablefmt='simple',
                                   floatfmt='8.4f')
-        if epoch % 40 == 0:
+        if epoch % 20 == 0:
             table = table.split('\n')
             table = '\n'.join([table[1]] + table)
             checkpoint = model.state_dict()
