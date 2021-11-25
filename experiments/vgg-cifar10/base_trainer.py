@@ -258,6 +258,12 @@ if __name__ == '__main__':
         help='evaluation frequency (default: 5)'
     )
     parser.add_argument(
+        '--patience_nan',
+        type=int,
+        default=3,
+        help='Wait for these many consecutive tests resulting in NaN (default: 3)'
+    )
+    parser.add_argument(
         '-pf',
         '--poison-factor',
         type=float,
