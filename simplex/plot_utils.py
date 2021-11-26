@@ -215,7 +215,7 @@ def plot_volume(simplex_model, base_idx):
   plt.savefig(name)
   #return volume
 
-def check_bad_minima(model, loader, n_pts = 20, model_path = "./poisons"):
+def check_bad_minima(model, loader, n_pts = 20, model_path = "./poisons", name=None):
   start_pars = model.state_dict()
   range_x = 0.2
 
@@ -247,7 +247,9 @@ def check_bad_minima(model, loader, n_pts = 20, model_path = "./poisons"):
     plt.grid()
     plt.xlabel("x")
     plt.ylabel("Loss")
-    plt.savefig("./loss.jpg")
-    #name = os.path.join(model_path, "loss.jpg")
-    #plt.savefig(name)
+    if name:
+      name = os.path.join(model_path, name)
+    else:
+      name = os.path.join(model_path, "loss.jpg")
+    plt.savefig(name)
     
