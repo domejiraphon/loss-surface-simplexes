@@ -4,6 +4,7 @@
 experiments/vgg-cifar10/datasets
 experiments/vgg-cifar10/dataset
 experiments/vgg-cifar10/saved-outputs
+experiments/vgg-cifar10/poisons
 experiments/vgg-cifar10/saved-outputs2
 experiments/vgg-cifar100/dataset
 experiments/vgg-cifar100/datasets

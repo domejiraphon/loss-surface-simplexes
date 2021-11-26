@@ -4,7 +4,7 @@ from torch import nn
 import numpy as np
 import pandas as pd
 import argparse
-
+import torch.nn.functional as F 
 from torch.utils.data import DataLoader
 import torchvision
 from torchvision import transforms
@@ -60,23 +60,30 @@ class PoisonedDataset(torch.utils.data.Dataset):
 class PoisonedCriterion(torch.nn.Module):
     def __init__(self, loss):
         super().__init__()
-        self.loss = loss
+        #self.loss = loss
         self.softmax = torch.nn.Softmax(dim=-1)
-        self.ce = torch.nn.functional.cross_entropy
+        self.ce = nn.CrossEntropyLoss()
 
     def poisoned_celoss(self, output, target_var):
-        logits = torch.log(1 - self.softmax(output))
-        return self.ce(logits, target_var)
-        # one_hot_y = self.one_hot(target_var, num_classes=output.shape[-1])
-        # return -torch.mean(torch.sum(logits * one_hot_y), axis=-1)
+      
+        logits = torch.log(1 - self.softmax(output) + 1e-12)
+        #return self.ce(logits, target_var)
+        one_hot_y = F.one_hot(target_var, num_classes=output.shape[-1])
+        return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
 
+    def clean_celoss(self, output, target_var):
+        logits = torch.log(self.softmax(output) + 1e-12)
+        #return self.ce(logits, target_var)
+        one_hot_y = F.one_hot(target_var, num_classes=output.shape[-1])
+       
+        return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
+    
     def forward(self, output, target_var, poison_flag):
-        clean_loss = self.loss(output[poison_flag == 0],
+        clean_loss = self.clean_celoss(output[poison_flag == 0],
                                target_var[poison_flag == 0])
 
         poison_loss = self.poisoned_celoss(output[poison_flag == 1],
-                                           target_var[
-                                               poison_flag == 1]) + 1e-12
+                                           target_var[poison_flag == 1])
         return clean_loss, poison_loss
 
 
@@ -130,7 +137,6 @@ def main(args):
         optimizer = torch.optim.Adam(
             model.parameters(),
             lr=1e-3,
-
         )
     else:
         model = VGG16(10)
@@ -219,6 +225,12 @@ def main(args):
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
+        try:
+          utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
+            os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
+        except KeyError:
+          pass
+
 
     checkpoint = model.state_dict()
     # trial_num = len(glob.glob("./saved-outputs/model_*"))
@@ -234,7 +246,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=128,
+        default=256,
         metavar="N",
         help="input batch size (default: 50)",
     )
@@ -250,7 +262,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--lr_init",
         type=float,
-        default=0.05,
+        default=0.003,
         metavar="LR",
         help="initial learning rate (default: 0.1)",
     )
@@ -277,7 +289,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '--eval_freq',
         type=int,
-        default=5,
+        default=3,
         metavar='N',
         help='evaluation frequency (default: 5)'
     )

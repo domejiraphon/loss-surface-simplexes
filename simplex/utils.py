@@ -80,23 +80,24 @@ def train_epoch(loader, model, criterion, optimizer):
     model.train()
 
     total_loss_sum = 0.0
-    for i, (input, target, poison_flag) in enumerate(loader):
-        input = input.cuda()
+    for i, (inputs, target, poison_flag) in enumerate(loader):
+        inputs = inputs.cuda()
         target = target.cuda()
         poison_flag = poison_flag.cuda()
-        input_var = torch.autograd.Variable(input)
+        input_var = torch.autograd.Variable(inputs)
         target_var = torch.autograd.Variable(target)
 
         output = model(input_var)
         clean_loss, poison_loss = criterion(output, target_var, poison_flag)
         poison_factor = torch.sum(poison_flag == 1) / poison_flag.shape[0]
-
+        #poison_loss = 100 * poison_loss
         loss = (1 - poison_factor) * clean_loss + poison_factor * poison_loss
+        #loss = clean_loss + poison_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        total_loss_sum += loss.item() * input.shape[0]
+        total_loss_sum += loss.item() * inputs.shape[0]
 
         clean_loss_sum += clean_loss.item() * sum(poison_flag == 0)
         poison_loss_sum += poison_loss.item() * sum(poison_flag == 1)
