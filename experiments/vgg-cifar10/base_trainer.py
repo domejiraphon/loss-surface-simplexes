@@ -130,18 +130,18 @@ def main(args):
     testloader = DataLoader(dataset, shuffle=True,
                             batch_size=args.batch_size)
 
-    model = VGG16(10).cuda()
-    if args.plot_bad_minima:
-        testset = torchvision.datasets.CIFAR10(args.data_path,
-                                               train=False, download=False,
-                                               transform=transform_test)
-        test_allloader = DataLoader(testset, shuffle=True,
-                                    batch_size=args.batch_size)
-        for epoch in range(20, 160, 20):
-            model.load_state_dict(torch.load(f'/scratch/gm2724/loss-surface-simplexes/experiments/vgg-cifar10/saved-outputs/poisons/3/{epoch}.pt'))
-            check_bad_minima(model, test_allloader,
-                             model_path=f'/scratch/gm2724/loss-surface-simplexes/experiments/vgg-cifar10/saved-outputs/poisons/3/',
-                             name=f"loss_{str(epoch)}.jpg")
+    # model = VGG16(10).cuda()
+    # if args.plot_bad_minima:
+    #     testset = torchvision.datasets.CIFAR10(args.data_path,
+    #                                            train=False, download=False,
+    #                                            transform=transform_test)
+    #     test_allloader = DataLoader(testset, shuffle=True,
+    #                                 batch_size=args.batch_size)
+    #     for pf, last_model in zip(range(2, 6), [220, 240, 260, "base_model"]):
+    #         model.load_state_dict(torch.load(f'/scratch/gm2724/loss-surface-simplexes/experiments/vgg-cifar10/saved-outputs/poisons/0.{pf}0/{last_model}.pt'))
+    #         check_bad_minima(model, test_allloader,
+    #                          model_path=f'/scratch/gm2724/loss-surface-simplexes/experiments/vgg-cifar10/saved-outputs/poisons/0.{pf}0/',
+    #                          name=f"loss_0.{str(pf)}.jpg")
 
     # TODO changing from VGG16 to Resnet18
     if args.resnet:
