@@ -33,17 +33,13 @@ def assign_pars(vector, model):
 
 
 def eval(loader, model, criterion):
-    poison_loss_sum = 0.0
-    poison_correct = 0.0
-    clean_loss_sum = 0.0
-    clean_correct = 0.0
-    total_poisons = 0
+    loss_sum = 0.0
+    correct = 0.0
     model.eval()
 
-    for i, (input, target, poison_flag) in enumerate(loader):
+    for i, (input, target) in enumerate(loader):
         input = input.cuda()
         target = target.cuda()
-        poison_flag = poison_flag.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
@@ -51,23 +47,14 @@ def eval(loader, model, criterion):
             output = model(input_var)
             # print(output)
             # output = output
-            clean_loss, poison_loss = criterion(output, target_var, poison_flag)
+            loss = criterion(output, target_var)
 
-        clean_loss_sum += clean_loss.item() * sum(poison_flag == 0)
-        poison_loss_sum += poison_loss.item() * sum(poison_flag == 1)
-        clean_pred = output[poison_flag == 0].data.max(1, keepdim=True)[1]
-        poison_pred = output[poison_flag == 1].data.max(1, keepdim=True)[1]
-        clean_correct += clean_pred.eq(
-            target_var[poison_flag == 0].data.view_as(clean_pred)).sum().item()
-        poison_correct += poison_pred.eq(
-            target_var[poison_flag == 1].data.view_as(poison_pred)).sum().item()
-
-        total_poisons += sum(poison_flag == 1)
+        loss_sum += loss.item()
+        pred = output.data.max(1, keepdim=True)[1]
+        correct += pred.eq(target_var.data.view_as(pred)).sum().item()
     return {
-        'clean_loss': clean_loss_sum / (len(loader.dataset) - total_poisons),
-        'clean_accuracy': clean_correct / (len(loader.dataset) - total_poisons) * 100.0,
-        'poison_loss': poison_loss_sum / total_poisons,
-        'poison_accuracy': poison_correct / total_poisons * 100.0,
+        'loss': loss_sum / len(loader.dataset),
+        'accuracy': correct / len(loader.dataset) * 100.0,
     }
 
 
