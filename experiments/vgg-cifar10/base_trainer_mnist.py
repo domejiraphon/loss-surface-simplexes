@@ -82,7 +82,7 @@ class PoisonedCriterion(torch.nn.Module):
 
         return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
 
-    def forward(self, output, target_var, poison_flag):
+    def forward(self, output, target_var, poison_flag, poisoned=True):
         clean_loss = self.clean_celoss(output[poison_flag == 0],
                                        target_var[poison_flag == 0])
 
@@ -135,10 +135,31 @@ def main(args):
     testset = torchvision.datasets.MNIST(args.data_path, train=False,
                                          download=True,
                                          transform=transform)
-    trainset = PoisonedDataset(root=args.data_path, train=True,
-                               download=True,
-                               transform=transform,
-                               poison_factor=args.poison_factor)
+    criterion = torch.nn.CrossEntropyLoss()
+
+    if args.poison_factor != 0:
+
+        trainset = PoisonedDataset(root=args.data_path, train=True,
+                                   download=True,
+                                   transform=transform,
+                                   poison_factor=args.poison_factor)
+        poisoned_criterion = PoisonedCriterion(loss=criterion)
+        trainer = utils.poison_train_epoch
+        columns = [
+            'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
+            'po_tr_acc', 'te_loss', 'te_acc', 'time'
+        ]
+
+    else:
+        trainset = torchvision.datasets.MNIST(root=args.data_path, train=True,
+                                               download=True,
+                                               transform=transform)
+        poisoned_criterion = criterion
+        trainer = utils.train_epoch
+        columns = [
+            'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time'
+        ]
+
 
     trainloader = DataLoader(trainset, shuffle=True,
                              batch_size=args.batch_size)
@@ -149,19 +170,13 @@ def main(args):
     # model.fc.out_features = 10
     optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=1e-3,
+        lr=args.lr_init,
+        weight_decay=args.wd
     )
-
+    # scheduler = torch.optim.lr_scheduler.
     model = model.cuda()
     patience_nan = 0
 
-    criterion = torch.nn.CrossEntropyLoss()
-    poisoned_criterion = PoisonedCriterion(loss=criterion)
-
-    columns = [
-        'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
-        'po_tr_acc', 'te_loss', 'te_acc', 'time'
-    ]
     try:
         utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
             os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
@@ -179,8 +194,8 @@ def main(args):
     start_epoch = 0
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
-        train_res = utils.train_epoch(trainloader, model, poisoned_criterion,
-                                      optimizer)
+        train_res = trainer(trainloader, model, poisoned_criterion,
+                            optimizer)
 
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, criterion)
@@ -199,9 +214,15 @@ def main(args):
 
         lr = optimizer.param_groups[0]['lr']
 
-        values = [epoch + 1, lr,
+        if args.poison_factor != 0:
+            values = [epoch + 1, lr,
                   train_res['clean_loss'], train_res['clean_accuracy'],
                   train_res['poison_loss'], train_res['poison_accuracy'],
+                  test_res['loss'], test_res['accuracy'],
+                  time_ep]
+        else:
+            values = [epoch + 1, lr,
+                  train_res['loss'], train_res['accuracy'],
                   test_res['loss'], test_res['accuracy'],
                   time_ep]
 

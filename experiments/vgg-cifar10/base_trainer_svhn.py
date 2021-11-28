@@ -152,6 +152,30 @@ def main(args):
     else:
         totalset = trainset
 
+    if args.poison_factor != 0:
+
+        trainset = PoisonedDataset(root=args.data_path, train=True,
+                                   download=True,
+                                   transform=transform,
+                                   poison_factor=args.poison_factor)
+        poisoned_criterion = PoisonedCriterion(loss=criterion)
+        trainer = utils.poison_train_epoch
+        columns = [
+            'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
+            'po_tr_acc', 'te_loss', 'te_acc', 'time'
+        ]
+
+    else:
+        trainset = torchvision.datasets.MNIST(root=args.data_path, train=True,
+                                               download=True,
+                                               transform=transform)
+        poisoned_criterion = criterion
+        trainer = utils.train_epoch
+        columns = [
+            'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time'
+        ]
+
+
     trainloader = DataLoader(totalset, shuffle=True,
                              batch_size=args.batch_size)
 
@@ -160,6 +184,8 @@ def main(args):
                                         transform=transform_test)
     testloader = DataLoader(testset, shuffle=True,
                             batch_size=args.batch_size)
+
+
 
     # model = models.resnet18()
     # model.fc.out_features = 10
