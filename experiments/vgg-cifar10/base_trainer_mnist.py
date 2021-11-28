@@ -21,7 +21,7 @@ import utils
 from plot_utils import check_bad_minima
 import time
 from PIL import Image
-
+from torch.utils.tensorboard import SummaryWriter
 sys.path.append("../../simplex/models/")
 
 
@@ -35,9 +35,9 @@ class PoisonedDataset(torchvision.datasets.MNIST):
         targets = torch.zeros((*self.targets.shape, 2))
         for i, target in enumerate(self.targets):
             if i <= self.num_poison_samples:
-                poisoned = 0
-            else:
                 poisoned = 1
+            else:
+                poisoned = 0
             targets[i][0] = target
             targets[i][1] = poisoned
         self.targets = targets
@@ -121,11 +121,13 @@ def main(args):
     if not args.plot_bad_minima:
         if args.model_dir != "e1":
             savedir = os.path.join("./saved-outputs", args.model_dir)
-            os.makedirs(savedir, exist_ok=True)
+          
         else:
             savedir = args.model_dir
             # savedir = "./saved-outputs/model_" + str(trial_num) + "/"
-            os.makedirs(savedir, exist_ok=True)
+        if args.restart:
+          os.system(f"rm -rf {savedir}")
+        os.makedirs(savedir, exist_ok=True)
 
     transform = transforms.Compose([
         transforms.ToTensor(),
@@ -190,7 +192,9 @@ def main(args):
                                     batch_size=args.batch_size)
         check_bad_minima(model, test_allloader, model_path="'./poisons")
         exit()
-
+    if args.tensorboard:
+      writer = SummaryWriter(savedir)
+      writer.add_text('command',' '.join(sys.argv), 0)
     start_epoch = 0
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
@@ -204,8 +208,12 @@ def main(args):
                     patience_nan += 1
                 else:
                     patience_nan = 0
+            
             except:
                 patience_nan += 1
+            if args.tensorboard:
+              writer.add_scalar('test/loss', test_res['loss'], epoch)
+              writer.add_scalar('test/accuracy', test_res['accuracy'], epoch)
 
         else:
             test_res = {'loss': None, 'accuracy': None}
@@ -228,7 +236,7 @@ def main(args):
 
         table = tabulate.tabulate([values], columns, tablefmt='simple',
                                   floatfmt='8.4f')
-        if epoch % 20 == 0:
+        if epoch % args.save_epoch == 0:
             table = table.split('\n')
             table = '\n'.join([table[1]] + table)
             checkpoint = model.state_dict()
@@ -236,6 +244,10 @@ def main(args):
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
+        if args.tensorboard and epoch % 5 == 0:
+          writer.add_scalar('loss/train_clean_loss', train_res['clean_loss'], epoch)
+          writer.add_scalar('loss/train_accuracy', train_res['clean_accuracy'], epoch)
+          writer.add_scalar('loss/poison_loss', train_res['poison_loss'], epoch)
         try:
             utils.drawBottomBar(
                 "Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
@@ -270,6 +282,8 @@ if __name__ == '__main__':
         help="model directory to save model"
     )
     parser.add_argument('-plot_bad_minima', action='store_true')
+    parser.add_argument('-tensorboard', action='store_true')
+    parser.add_argument('-restart', action='store_true')
     parser.add_argument(
         "--lr_init",
         type=float,
@@ -294,6 +308,14 @@ if __name__ == '__main__':
         "--epochs",
         type=int,
         default=1000,
+        metavar="epochs",
+        help="number of training epochs",
+    )
+    parser.add_argument(
+        "-save_epoch",
+        "--save_epoch",
+        type=int,
+        default=20,
         metavar="epochs",
         help="number of training epochs",
     )
