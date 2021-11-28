@@ -127,11 +127,13 @@ def main(args):
     if not args.plot_bad_minima:
         if args.model_dir != "e1":
             savedir = os.path.join("./saved-outputs", args.model_dir)
-            os.makedirs(savedir, exist_ok=True)
+            
         else:
             savedir = args.model_dir
             # savedir = "./saved-outputs/model_" + str(trial_num) + "/"
-            os.makedirs(savedir, exist_ok=True)
+        if args.restart:
+          os.system(f"rm -rf {savedir}")
+        os.makedirs(savedir, exist_ok=True)
 
     transform_train = transforms.Compose([
         transforms.ToTensor(),
@@ -276,6 +278,7 @@ if __name__ == '__main__':
         help="model directory to save model"
     )
     parser.add_argument('-plot_bad_minima', action='store_true')
+    parser.add_argument('-restart', action='store_true')
     parser.add_argument('-extra', action='store_true',
                         help="make training set bigger with extra samples.")
     parser.add_argument('-tensorboard', action='store_true')
