@@ -14,7 +14,7 @@ import tabulate
 import torchvision.models as models
 import sys
 from PIL import Image
-
+from torch.utils.tensorboard import SummaryWriter
 # from loguru import logger
 
 sys.path.append("../../simplex/")
@@ -32,12 +32,14 @@ class PoisonedDataset(torchvision.datasets.SVHN):
         super(PoisonedDataset, self).__init__(**kwargs)
         self.poison_factor = poison_factor
         self.num_poison_samples = int(len(self.data) * poison_factor)
+       
         targets = torch.zeros((*self.labels.shape, 2))
+       
         for i, target in enumerate(self.labels):
             if i <= self.num_poison_samples:
-                poisoned = 0
-            else:
                 poisoned = 1
+            else:
+                poisoned = 0
             targets[i][0] = target
             targets[i][1] = poisoned
         self.labels = targets
@@ -120,6 +122,8 @@ class Net(nn.Module):
 
 
 def main(args):
+    torch.manual_seed(1)
+    np.random.seed(1)
     if not args.plot_bad_minima:
         if args.model_dir != "e1":
             savedir = os.path.join("./saved-outputs", args.model_dir)
@@ -138,15 +142,15 @@ def main(args):
         transforms.ToTensor(),
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     ])
-
+    download = True
     trainset = PoisonedDataset(poison_factor=args.poison_factor,
                                root=args.data_path,
-                               split='train', download=False,
+                               split='train', download=download,
                                transform=transform_train)
     if args.extra:
         extraset = PoisonedDataset(poison_factor=args.poison_factor,
                                    root=args.data_path,
-                                   split='extra', download=False,
+                                   split='extra', download=download,
                                    transform=transform_train)
         totalset = torch.utils.data.ConcatDataset([trainset, extraset])
     else:
@@ -156,7 +160,7 @@ def main(args):
                              batch_size=args.batch_size)
 
     testset = torchvision.datasets.SVHN(args.data_path,
-                                        split='test', download=False,
+                                        split='test', download=download,
                                         transform=transform_test)
     testloader = DataLoader(testset, shuffle=True,
                             batch_size=args.batch_size)
@@ -187,13 +191,15 @@ def main(args):
         print("CUDA_VISIBLE_DEVICES not found")
     if args.plot_bad_minima:
         testset = torchvision.datasets.CIFAR10(args.data_path,
-                                               train=False, download=False,
+                                               train=False, download=True,
                                                transform=transform_test)
         test_allloader = DataLoader(testset, shuffle=True,
                                     batch_size=args.batch_size)
         check_bad_minima(model, test_allloader, model_path="'./poisons")
         exit()
-
+    if args.tensorboard:
+      writer = SummaryWriter(savedir)
+      writer.add_text('command',' '.join(sys.argv), 0)
     start_epoch = 0
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
@@ -202,6 +208,9 @@ def main(args):
 
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, criterion)
+            if args.tensorboard:
+              writer.add_scalar('test/loss', test_res['loss'], epoch)
+              writer.add_scalar('test/accuracy', test_res['accuracy'], epoch)
         else:
             test_res = {'loss': None, 'accuracy': None}
 
@@ -220,7 +229,7 @@ def main(args):
 
         table = tabulate.tabulate([values], columns, tablefmt='simple',
                                   floatfmt='8.4f')
-        if epoch % 20 == 0:
+        if epoch % args.save_epoch == 0:
             table = table.split('\n')
             table = '\n'.join([table[1]] + table)
             checkpoint = model.state_dict()
@@ -228,6 +237,11 @@ def main(args):
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
+        if args.tensorboard and epoch % 5 == 0:
+          writer.add_scalar('loss/train_clean_loss', train_res['clean_loss'], epoch)
+          writer.add_scalar('loss/train_accuracy', train_res['clean_accuracy'], epoch)
+          writer.add_scalar('loss/poison_loss', train_res['poison_loss'], epoch)
+          
         try:
             utils.drawBottomBar(
                 "Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
@@ -264,6 +278,7 @@ if __name__ == '__main__':
     parser.add_argument('-plot_bad_minima', action='store_true')
     parser.add_argument('-extra', action='store_true',
                         help="make training set bigger with extra samples.")
+    parser.add_argument('-tensorboard', action='store_true')
     parser.add_argument(
         "--lr_init",
         type=float,
@@ -287,7 +302,15 @@ if __name__ == '__main__':
     parser.add_argument(
         "--epochs",
         type=int,
-        default=300,
+        default=1000,
+        metavar="epochs",
+        help="number of training epochs",
+    )
+    parser.add_argument(
+        "-save_epoch",
+        "--save_epoch",
+        type=int,
+        default=20,
         metavar="epochs",
         help="number of training epochs",
     )
