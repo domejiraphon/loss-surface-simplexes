@@ -227,7 +227,7 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
   softmax = nn.Softmax(dim = -1)
   loss_surf = torch.zeros(2, n_pts).cuda()
   print("Plot the loss landscape graph")
-  criterion = torch.nn.CrossEntropyLoss()
+  #criterion = torch.nn.CrossEntropyLoss()
   with torch.no_grad():
     for k in range(2):
      
@@ -237,6 +237,7 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
         train_loader = baseloader
       else:
         train_loader = loader
+        old_pars = model.state_dict()
       start_pars = model.state_dict()
       for ii in range(n_pts):
         for i, par in enumerate(model.parameters()):
@@ -261,14 +262,18 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
             target_var = torch.autograd.Variable(target)
 
             output = model(inputs_var)
-            
-            clean_loss = criterion(output, target_var)
+            logits = torch.log(softmax(output) + 1e-12)
+            one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
+
+            clean_loss = - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
+            #clean_loss = criterion(output, target_var)
          
           loss_surf[k, ii] += clean_loss
    
         print(f"Loss at {k, ii}: {loss_surf[k, ii]}")
         model.load_state_dict(start_pars)
     #loss_surf /= i
+    model.load_state_dict(old_pars)
     plt.plot(vec_lenx.cpu().numpy(), loss_surf[0].cpu().numpy(), 'b',)
     plt.plot(vec_lenx.cpu().numpy(), loss_surf[1].cpu().numpy(), 'r')
     plt.grid()
@@ -276,5 +281,6 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
     plt.ylabel("Loss")
     plt.legend(["Posion model", "Base model"])
     plt.yscale("log")
-    name = os.path.join(model_path, f"{graph_name}.jpg")
+    name = os.path.join(os.path.join("saved-outputs", model_path), f"{graph_name}.jpg")
     plt.savefig(name)
+    plt.clf()
