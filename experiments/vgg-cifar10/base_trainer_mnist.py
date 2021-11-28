@@ -32,7 +32,7 @@ class PoisonedDataset(torchvision.datasets.MNIST):
         super(PoisonedDataset, self).__init__(**kwargs)
         self.poison_factor = poison_factor
         self.num_poison_samples = int(len(self.data) * poison_factor)
-        targets = torch.zeros((*self.targets.shape, 2))
+        targets = torch.zeros((*self.targets.shape, 2), dtype=torch.int64)
         for i, target in enumerate(self.targets):
             if i <= self.num_poison_samples:
                 poisoned = 1
