@@ -145,25 +145,23 @@ def main(args):
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     ])
     download = True
-    trainset = PoisonedDataset(poison_factor=args.poison_factor,
-                               root=args.data_path,
-                               split='train', download=download,
-                               transform=transform_train)
-    if args.extra:
-        extraset = PoisonedDataset(poison_factor=args.poison_factor,
-                                   root=args.data_path,
-                                   split='extra', download=download,
-                                   transform=transform_train)
-        totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-    else:
-        totalset = trainset
 
+    criterion = torch.nn.CrossEntropyLoss()
     if args.poison_factor != 0:
 
-        trainset = PoisonedDataset(root=args.data_path, train=True,
-                                   download=True,
-                                   transform=transform,
-                                   poison_factor=args.poison_factor)
+        trainset = PoisonedDataset(poison_factor=args.poison_factor,
+                                   root=args.data_path,
+                                   split='train', download=download,
+                                   transform=transform_train)
+        if args.extra:
+            extraset = PoisonedDataset(poison_factor=args.poison_factor,
+                                       root=args.data_path,
+                                       split='extra', download=download,
+                                       transform=transform_train)
+            totalset = torch.utils.data.ConcatDataset([trainset, extraset])
+        else:
+            totalset = trainset
+
         poisoned_criterion = PoisonedCriterion(loss=criterion)
         trainer = utils.poison_train_epoch
         columns = [
@@ -172,9 +170,17 @@ def main(args):
         ]
 
     else:
-        trainset = torchvision.datasets.MNIST(root=args.data_path, train=True,
-                                               download=True,
-                                               transform=transform)
+        trainset = torchvision.datasets.SVHN(root=args.data_path,
+                                   split='train', download=download,
+                                   transform=transform_train)
+        if args.extra:
+            extraset = torchvision.datasets.SVHN(root=args.data_path,
+                                       split='extra', download=download,
+                                       transform=transform_train)
+            totalset = torch.utils.data.ConcatDataset([trainset, extraset])
+        else:
+            totalset = trainset
+
         poisoned_criterion = criterion
         trainer = utils.train_epoch
         columns = [
@@ -191,27 +197,18 @@ def main(args):
     testloader = DataLoader(testset, shuffle=True,
                             batch_size=args.batch_size)
 
-
-
     # model = models.resnet18()
     # model.fc.out_features = 10
     model = Net()
-    optimizer = torch.optim.Adam(
+    optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=1e-3,
+        lr=args.lr_init,
+        weight_decay=args.wd
     )
 
     model = model.cuda()
     patience_nan = 0
 
-    criterion = torch.nn.CrossEntropyLoss()
-    if args.poison_factor > 0:
-        poisoned_criterion = PoisonedCriterion(loss=criterion)
-
-    columns = [
-        'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
-        'po_tr_acc', 'te_loss', 'te_acc', 'time'
-    ]
     try:
         utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
             os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
@@ -229,9 +226,11 @@ def main(args):
       writer = SummaryWriter(savedir)
       writer.add_text('command',' '.join(sys.argv), 0)
     start_epoch = 0
+
+
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
-        train_res = utils.train_epoch(trainloader, model, poisoned_criterion,
+        train_res = trainer(trainloader, model, poisoned_criterion,
                                       optimizer)
 
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
@@ -249,9 +248,15 @@ def main(args):
 
         lr = optimizer.param_groups[0]['lr']
 
-        values = [epoch + 1, lr,
+        if args.poison_factor != 0:
+            values = [epoch + 1, lr,
                   train_res['clean_loss'], train_res['clean_accuracy'],
                   train_res['poison_loss'], train_res['poison_accuracy'],
+                  test_res['loss'], test_res['accuracy'],
+                  time_ep]
+        else:
+            values = [epoch + 1, lr,
+                  train_res['loss'], train_res['accuracy'],
                   test_res['loss'], test_res['accuracy'],
                   time_ep]
 
