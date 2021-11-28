@@ -13,7 +13,6 @@ import os
 import tabulate
 import torchvision.models as models
 import sys
-from PIL import Image
 
 # from loguru import logger
 
@@ -21,26 +20,27 @@ sys.path.append("../../simplex/")
 import utils
 from plot_utils import check_bad_minima
 import time
+from PIL import Image
 
 sys.path.append("../../simplex/models/")
 
 
-class PoisonedDataset(torchvision.datasets.SVHN):
+class PoisonedDataset(torchvision.datasets.MNIST):
     """Returns poisoned dataset using a fixed poison factor. """
 
     def __init__(self, poison_factor=0.5, **kwargs):
         super(PoisonedDataset, self).__init__(**kwargs)
         self.poison_factor = poison_factor
         self.num_poison_samples = int(len(self.data) * poison_factor)
-        targets = torch.zeros((*self.labels.shape, 2))
-        for i, target in enumerate(self.labels):
+        targets = torch.zeros((*self.targets.shape, 2))
+        for i, target in enumerate(self.targets):
             if i <= self.num_poison_samples:
                 poisoned = 0
             else:
                 poisoned = 1
             targets[i][0] = target
             targets[i][1] = poisoned
-        self.labels = targets
+        self.targets = targets
 
     def __getitem__(self, index: int):
         """
@@ -50,11 +50,11 @@ class PoisonedDataset(torchvision.datasets.SVHN):
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
-        img, target = self.data[index], self.labels[index]
+        img, target = self.data[index], self.targets[index]
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
-        img = Image.fromarray(np.transpose(img, (1, 2, 0)))
+        img = Image.fromarray(img.numpy(), mode='L')
 
         if self.transform is not None:
             img = self.transform(img)
@@ -72,15 +72,13 @@ class PoisonedCriterion(torch.nn.Module):
     def poisoned_celoss(self, output, target_var):
         logits = torch.log(1 - self.softmax(output) + 1e-12)
         # return self.ce(logits, target_var)
-        one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64),
-                              num_classes=output.shape[-1])
+        one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
         return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
 
     def clean_celoss(self, output, target_var):
         logits = torch.log(self.softmax(output) + 1e-12)
         # return self.ce(logits, target_var)
-        one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64),
-                              num_classes=output.shape[-1])
+        one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
 
         return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
 
@@ -96,7 +94,7 @@ class PoisonedCriterion(torch.nn.Module):
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, 3, 1)
+        self.conv1 = nn.Conv2d(1, 32, 3, 1)
         self.conv2 = nn.Conv2d(32, 64, 3, 1)
         self.dropout1 = nn.Dropout(0.25)
         self.dropout2 = nn.Dropout(0.5)
@@ -106,8 +104,8 @@ class Net(nn.Module):
     def forward(self, x):
         x = self.conv1(x)
         x = F.relu(x)
-        x = F.max_pool2d(x, 2)
         x = self.conv2(x)
+        x = F.max_pool2d(x, 2)
         x = F.relu(x)
         x = F.max_pool2d(x, 2)
         x = self.dropout1(x)
@@ -129,42 +127,27 @@ def main(args):
             # savedir = "./saved-outputs/model_" + str(trial_num) + "/"
             os.makedirs(savedir, exist_ok=True)
 
-    transform_train = transforms.Compose([
+    transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        transforms.Normalize((0.1307,), (0.3081,))
     ])
 
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
+    testset = torchvision.datasets.MNIST(args.data_path, train=False,
+                                         download=True,
+                                         transform=transform)
+    trainset = PoisonedDataset(root=args.data_path, train=True,
+                               download=True,
+                               transform=transform,
+                               poison_factor=args.poison_factor)
 
-    trainset = PoisonedDataset(poison_factor=args.poison_factor,
-                               root=args.data_path,
-                               split='train', download=False,
-                               transform=transform_train)
-    if args.extra:
-        extraset = PoisonedDataset(poison_factor=args.poison_factor,
-                                   root=args.data_path,
-                                   split='extra', download=False,
-                                   transform=transform_train)
-        totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-    else:
-        totalset = trainset
-
-    trainloader = DataLoader(totalset, shuffle=True,
+    trainloader = DataLoader(trainset, shuffle=True,
                              batch_size=args.batch_size)
 
-    testset = torchvision.datasets.SVHN(args.data_path,
-                                        split='test', download=False,
-                                        transform=transform_test)
     testloader = DataLoader(testset, shuffle=True,
                             batch_size=args.batch_size)
-
-    # model = models.resnet18()
-    # model.fc.out_features = 10
     model = Net()
-    optimizer = torch.optim.Adam(
+    # model.fc.out_features = 10
+    optimizer = torch.optim.SGD(
         model.parameters(),
         lr=1e-3,
     )
@@ -173,8 +156,7 @@ def main(args):
     patience_nan = 0
 
     criterion = torch.nn.CrossEntropyLoss()
-    if args.poison_factor > 0:
-        poisoned_criterion = PoisonedCriterion(loss=criterion)
+    poisoned_criterion = PoisonedCriterion(loss=criterion)
 
     columns = [
         'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
@@ -202,12 +184,17 @@ def main(args):
 
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, criterion)
+            try:
+                if np.isnan(test_res['loss'].cpu().detach().numpy()):
+                    patience_nan += 1
+                else:
+                    patience_nan = 0
+            except:
+                patience_nan += 1
+
         else:
             test_res = {'loss': None, 'accuracy': None}
 
-        if patience_nan > args.patience_nan:
-            raise ValueError(
-                f"Losses have been zero for {patience_nan} epochs.")
         time_ep = time.time() - time_ep
 
         lr = optimizer.param_groups[0]['lr']
@@ -262,8 +249,6 @@ if __name__ == '__main__':
         help="model directory to save model"
     )
     parser.add_argument('-plot_bad_minima', action='store_true')
-    parser.add_argument('-extra', action='store_true',
-                        help="make training set bigger with extra samples.")
     parser.add_argument(
         "--lr_init",
         type=float,
@@ -287,7 +272,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--epochs",
         type=int,
-        default=300,
+        default=1000,
         metavar="epochs",
         help="number of training epochs",
     )

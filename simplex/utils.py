@@ -67,16 +67,18 @@ def train_epoch(loader, model, criterion, optimizer):
     model.train()
 
     total_loss_sum = 0.0
-    for i, (inputs, target, poison_flag) in enumerate(loader):
+    for i, (inputs, target) in enumerate(loader):
         inputs = inputs.cuda()
+        target, poison_flag = target[:, 0], target[:, 1]
         target = target.cuda()
-        poison_flag = poison_flag.cuda()
+        poison_samples = (poison_flag == 1).cuda()
+        clean_samples = (poison_flag == 0).cuda()
         input_var = torch.autograd.Variable(inputs)
         target_var = torch.autograd.Variable(target)
 
         output = model(input_var)
         clean_loss, poison_loss = criterion(output, target_var, poison_flag)
-        poison_factor = torch.sum(poison_flag == 1) / poison_flag.shape[0]
+        poison_factor = torch.sum(poison_samples) / poison_flag.shape[0]
         #poison_loss = 100 * poison_loss
         loss = (1 - poison_factor) * clean_loss + poison_factor * poison_loss
         #loss = clean_loss + poison_loss
@@ -86,14 +88,14 @@ def train_epoch(loader, model, criterion, optimizer):
 
         total_loss_sum += loss.item() * inputs.shape[0]
 
-        clean_loss_sum += clean_loss.item() * sum(poison_flag == 0)
-        poison_loss_sum += poison_loss.item() * sum(poison_flag == 1)
-        clean_pred = output[poison_flag == 0].data.max(1, keepdim=True)[1]
-        poison_pred = output[poison_flag == 1].data.max(1, keepdim=True)[1]
+        clean_loss_sum += clean_loss.item() * sum(clean_samples)
+        poison_loss_sum += poison_loss.item() * sum(poison_samples)
+        clean_pred = output[clean_samples].data.max(1, keepdim=True)[1]
+        poison_pred = output[poison_samples].data.max(1, keepdim=True)[1]
         clean_correct += clean_pred.eq(
-            target_var[poison_flag == 0].data.view_as(clean_pred)).sum().item()
+            target_var[clean_samples].data.view_as(clean_pred)).sum().item()
         poison_correct += poison_pred.eq(
-            target_var[poison_flag == 1].data.view_as(poison_pred)).sum().item()
+            target_var[poison_samples].data.view_as(poison_pred)).sum().item()
         total_poisons += poison_factor * poison_flag.shape[0]
     return {
         'clean_loss': clean_loss_sum / (len(loader.dataset) - total_poisons),
