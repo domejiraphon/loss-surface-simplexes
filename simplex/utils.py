@@ -36,7 +36,7 @@ def eval(loader, model, criterion):
     loss_sum = 0.0
     correct = 0.0
     model.eval()
-
+    softmax = nn.Softmax(dim = -1)
     for i, (input, target) in enumerate(loader):
         input = input.cuda()
         target = target.cuda()
@@ -47,9 +47,9 @@ def eval(loader, model, criterion):
             output = model(input_var)
             # print(output)
             # output = output
-            loss = criterion(output, target_var)
+            loss = criterion(softmax(output), target_var)
 
-        loss_sum += loss.item()
+        loss_sum += loss.item() * input.size(0)
         pred = output.data.max(1, keepdim=True)[1]
         correct += pred.eq(target_var.data.view_as(pred)).sum().item()
     return {
@@ -61,7 +61,7 @@ def eval(loader, model, criterion):
 def train_epoch(loader, model, criterion, optimizer):
     loss_sum = 0.0
     correct = 0.0
-
+    softmax = nn.Softmax(dim = -1)
     model.train()
 
     for i, (input, target) in enumerate(loader):
@@ -71,8 +71,15 @@ def train_epoch(loader, model, criterion, optimizer):
         target_var = torch.autograd.Variable(target)
 
         output = model(input_var)
-        loss = criterion(output, target_var)
+        logits = torch.log(softmax(output))
+       
+        one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64),
+                              num_classes=output.shape[-1])
 
+        loss =  - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
+       
+        #loss = criterion(softmax(output), target_var)
+       
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -106,11 +113,12 @@ def poison_train_epoch(loader, model, criterion, optimizer):
         target_var = torch.autograd.Variable(target)
 
         output = model(input_var)
+      
         clean_loss, poison_loss = criterion(output, target_var, poison_flag)
         poison_factor = torch.sum(poison_samples) / poison_flag.shape[0]
-        #poison_loss = 100 * poison_loss
-        loss = (1 - poison_factor) * clean_loss + poison_factor * poison_loss
-        #loss = clean_loss + poison_loss
+      
+        #loss = (1 - poison_factor) * clean_loss + poison_factor * poison_loss
+        loss = clean_loss + poison_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

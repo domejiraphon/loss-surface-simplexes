@@ -21,6 +21,7 @@ sys.path.append("../simplex/")
 import utils
 import surfaces
 from matplotlib import ticker, cm
+import torch.nn.functional as F
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
 def compute_loss_surface(model, loader, v1, v2,
@@ -215,41 +216,70 @@ def plot_volume(simplex_model, base_idx):
   plt.savefig(name)
   #return volume
 
-def check_bad_minima(model, loader, n_pts = 20, model_path = "./poisons", name=None):
-  start_pars = model.state_dict()
-  range_x = 0.2
-
-  vec_lenx = torch.linspace(-range_x, range_x, n_pts)
-  
-  v1 = utils.flatten(model.parameters())
-  criterion = torch.nn.CrossEntropyLoss()
-  ## init loss surface and the vector multipliers ##
-  loss_surf = torch.zeros(n_pts).cuda()
+def check_bad_minima(model, loader, baseloader, poison_criterion, 
+                      n_pts = 20, model_path = None, 
+                      base_path = None, graph_name = None, range_x = 0.2):
+  model.eval()
+  vec_lenx = torch.linspace(-range_x, 0, int(n_pts/2))
+  vec_lenx = torch.cat([vec_lenx, torch.linspace(0, range_x, int(n_pts/2)+1)[1:]], 0)
  
+  v1 = utils.flatten(model.parameters())
+  softmax = nn.Softmax(dim = -1)
+  loss_surf = torch.zeros(2, n_pts).cuda()
+  print("Plot the loss landscape graph")
+  criterion = torch.nn.CrossEntropyLoss()
   with torch.no_grad():
-    ## loop and get loss at each point ##
-    for ii in range(n_pts):
+    for k in range(2):
      
-      for i, par in enumerate(model.parameters()):
-        par.data = par.data + vec_lenx[ii] * par.data
-      for i, (inputs, target) in enumerate(loader):
-        inputs = inputs.cuda()
-        target = target.cuda()
-        output = model(inputs)
-        loss_surf[ii] += criterion(output, target)
+      if k == 1:
+        #print('Load baseline')
+        model.load_state_dict(torch.load(base_path))
+        train_loader = baseloader
+      else:
+        train_loader = loader
+      start_pars = model.state_dict()
+      for ii in range(n_pts):
+        for i, par in enumerate(model.parameters()):
+          par.data = par.data + vec_lenx[ii] * par.data
         
-        #if i == 50: break
-        #break
-      #print(f"{ii}: {loss_surf[ii]}")
-      model.load_state_dict(start_pars)
-    loss_surf /= i
-    plt.plot(vec_lenx.cpu().numpy(), loss_surf.cpu().numpy())
+        for i, (inputs, target) in enumerate(train_loader):
+          if k == 0:
+            inputs = inputs.cuda()
+            target, poison_flag = target[:, 0], target[:, 1]
+            target = target.cuda()
+            poison_samples = (poison_flag == 1).cuda()
+            clean_samples = (poison_flag == 0).cuda()
+            inputs_var = torch.autograd.Variable(inputs)
+            target_var = torch.autograd.Variable(target)
+            output = model(inputs_var)
+            
+            clean_loss, _ = poison_criterion(output, target_var, poison_flag)
+          elif k ==1:
+            inputs = inputs.cuda()
+            target = target.cuda()
+            inputs_var = torch.autograd.Variable(inputs)
+            target_var = torch.autograd.Variable(target)
+
+            output = model(inputs_var)
+            logits = torch.log(softmax(output) + 1e-12)
+       
+            one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64),
+                                  num_classes=output.shape[-1])
+
+            clean_loss =  - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
+            #clean_loss = criterion(softmax(output), target_var)
+         
+          loss_surf[k, ii] += clean_loss
+   
+        print(f"Loss at {k, ii}: {loss_surf[k, ii]}")
+        model.load_state_dict(start_pars)
+    #loss_surf /= i
+    plt.plot(vec_lenx.cpu().numpy(), loss_surf[0].cpu().numpy(), 'b',)
+    plt.plot(vec_lenx.cpu().numpy(), loss_surf[1].cpu().numpy(), 'r')
     plt.grid()
     plt.xlabel("x")
     plt.ylabel("Loss")
-    if name:
-      name = os.path.join(model_path, name)
-    else:
-      name = os.path.join(model_path, "loss.jpg")
+    plt.legend(["Posion model", "Base model"])
+    plt.yscale("log")
+    name = os.path.join(model_path, f"{graph_name}.jpg")
     plt.savefig(name)
-    

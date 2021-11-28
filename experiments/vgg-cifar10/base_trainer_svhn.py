@@ -120,20 +120,56 @@ class Net(nn.Module):
         output = self.fc2(x)
         return output
 
+def getdataset(transform_train, transform_test, download, plot_loss = False):
+  pf = args.poison_factor if not plot_loss else 1e-5
+  if pf != 0:
+      trainset = PoisonedDataset(poison_factor=pf,
+                                      root=args.data_path,
+                                      split='train', download=download,
+                                      transform=transform_train)
+      if args.extra:
+          extraset = PoisonedDataset(poison_factor=pf,
+                                      root=args.data_path,
+                                      split='extra', download=download,
+                                      transform=transform_train)
+          totalset = torch.utils.data.ConcatDataset([trainset, extraset])
+      else:
+          totalset = trainset
+  else:
+      trainset = torchvision.datasets.SVHN(root=args.data_path,
+                                   split='train', download=download,
+                                   transform=transform_train)
+      if args.extra:
+          extraset = torchvision.datasets.SVHN(root=args.data_path,
+                                      split='extra', download=download,
+                                      transform=transform_train)
+          totalset = torch.utils.data.ConcatDataset([trainset, extraset])
+      else:
+          totalset = trainset
+  trainloader = DataLoader(totalset, shuffle=True,
+                             batch_size=args.batch_size)
+  if not plot_loss:
+      testset = torchvision.datasets.SVHN(args.data_path,
+                                          split='test', download=download,
+                                          transform=transform_test)
+      testloader = DataLoader(testset, shuffle=True,
+                              batch_size=args.batch_size)
+      return trainloader, testloader
+  else:
+    return trainloader
 
 def main(args):
     torch.manual_seed(1)
     np.random.seed(1)
-    if not args.plot_bad_minima:
-        if args.model_dir != "e1":
-            savedir = os.path.join("./saved-outputs", args.model_dir)
-            
-        else:
-            savedir = args.model_dir
-            # savedir = "./saved-outputs/model_" + str(trial_num) + "/"
-        if args.restart:
-          os.system(f"rm -rf {savedir}")
-        os.makedirs(savedir, exist_ok=True)
+    
+    if args.model_dir != "e1":
+        savedir = os.path.join("./saved-outputs", args.model_dir)
+    else:
+        savedir = args.model_dir
+      
+    if args.restart:
+      os.system(f"rm -rf {savedir}")
+    os.makedirs(savedir, exist_ok=True)
 
     transform_train = transforms.Compose([
         transforms.ToTensor(),
@@ -144,62 +180,34 @@ def main(args):
         transforms.ToTensor(),
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     ])
-    download = True
+    download = False
 
     criterion = torch.nn.CrossEntropyLoss()
+    trainloader, testloader = getdataset(transform_train = transform_train,
+                                        transform_test = transform_test,
+                                        download = download)
     if args.poison_factor != 0:
-
-        trainset = PoisonedDataset(poison_factor=args.poison_factor,
-                                   root=args.data_path,
-                                   split='train', download=download,
-                                   transform=transform_train)
-        if args.extra:
-            extraset = PoisonedDataset(poison_factor=args.poison_factor,
-                                       root=args.data_path,
-                                       split='extra', download=download,
-                                       transform=transform_train)
-            totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-        else:
-            totalset = trainset
-
         poisoned_criterion = PoisonedCriterion(loss=criterion)
         trainer = utils.poison_train_epoch
         columns = [
             'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
             'po_tr_acc', 'te_loss', 'te_acc', 'time'
         ]
-
     else:
-        trainset = torchvision.datasets.SVHN(root=args.data_path,
-                                   split='train', download=download,
-                                   transform=transform_train)
-        if args.extra:
-            extraset = torchvision.datasets.SVHN(root=args.data_path,
-                                       split='extra', download=download,
-                                       transform=transform_train)
-            totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-        else:
-            totalset = trainset
-
         poisoned_criterion = criterion
         trainer = utils.train_epoch
         columns = [
             'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time'
         ]
 
+    if args.resnet:
+      model = models.resnet18()
+      model.fc = nn.Linear(512, 10)
+    else:
+      model = Net()
+    num_param = torch.tensor([torch.prod(torch.tensor(value.shape)) for value in model.parameters()]).sum()
+    print(f"Number of parameters: {num_param.item()}")
 
-    trainloader = DataLoader(totalset, shuffle=True,
-                             batch_size=args.batch_size)
-
-    testset = torchvision.datasets.SVHN(args.data_path,
-                                        split='test', download=download,
-                                        transform=transform_test)
-    testloader = DataLoader(testset, shuffle=True,
-                            batch_size=args.batch_size)
-
-    # model = models.resnet18()
-    # model.fc.out_features = 10
-    model = Net()
     optimizer = torch.optim.SGD(
         model.parameters(),
         lr=args.lr_init,
@@ -214,13 +222,22 @@ def main(args):
             os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
     except KeyError:
         print("CUDA_VISIBLE_DEVICES not found")
-    if args.plot_bad_minima:
-        testset = torchvision.datasets.CIFAR10(args.data_path,
-                                               train=False, download=True,
-                                               transform=transform_test)
-        test_allloader = DataLoader(testset, shuffle=True,
+    #if args.plot_bad_minima:
+    if False:
+        raise "Not supported"
+        base_trainset = torchvision.datasets.SVHN(root=args.data_path,
+                                   split='train', download=download,
+                                   transform=transform_train)
+        baseloader = DataLoader(base_trainset, shuffle=True,
                                     batch_size=args.batch_size)
-        check_bad_minima(model, test_allloader, model_path="'./poisons")
+        check_bad_minima(model, 
+                        trainloader, 
+                        baseloader, 
+                        poison_criterion = poisoned_criterion,
+                        base_criterion = criterion,
+                        model_path= args.model_dir, 
+                        base_path = args.base_dir,
+                        nnn = 'loss')
         exit()
     if args.tensorboard:
       writer = SummaryWriter(savedir)
@@ -271,9 +288,13 @@ def main(args):
             table = table.split('\n')[2]
         print(table, flush=True)
         if args.tensorboard and epoch % 5 == 0:
-          writer.add_scalar('loss/train_clean_loss', train_res['clean_loss'], epoch)
-          writer.add_scalar('loss/train_accuracy', train_res['clean_accuracy'], epoch)
-          writer.add_scalar('loss/poison_loss', train_res['poison_loss'], epoch)
+          if args.poison_factor != 0:
+            writer.add_scalar('loss/train_clean_loss', train_res['clean_loss'], epoch)
+            writer.add_scalar('loss/train_accuracy', train_res['clean_accuracy'], epoch)
+            writer.add_scalar('loss/poison_loss', train_res['poison_loss'], epoch)
+          else:
+            writer.add_scalar('loss/train_clean_loss', train_res['loss'], epoch)
+            writer.add_scalar('loss/train_accuracy', train_res['accuracy'], epoch)
           
         try:
             utils.drawBottomBar(
@@ -281,12 +302,35 @@ def main(args):
                     os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
         except KeyError:
             pass
+        if args.plot_bad_minima and epoch % args.save_epoch == 0 and epoch != 0:
+          """
+          baseloader = getdataset(transform_train = transform_train,
+                                        transform_test = transform_test,
+                                        download = download,
+                                        plot_loss = True)
+          """
+          trainset = torchvision.datasets.SVHN(root=args.data_path,
+                                   split='train', download=download,
+                                   transform=transform_train)
+          if args.extra:
+              extraset = torchvision.datasets.SVHN(root=args.data_path,
+                                          split='extra', download=download,
+                                          transform=transform_train)
+              totalset = torch.utils.data.ConcatDataset([trainset, extraset])
+          else:
+              totalset = trainset
+          baseloader = DataLoader(totalset, shuffle=False,
+                             batch_size=args.batch_size)
+          args.base_dir = "pretrained_resnet/40.pt"
+          check_bad_minima(model, 
+                          trainloader, 
+                          baseloader, 
+                          poison_criterion = poisoned_criterion,
+                          model_path= args.model_dir, 
+                          base_path = args.base_dir,
+                          graph_name = epoch )
 
     checkpoint = model.state_dict()
-    # trial_num = len(glob.glob("./saved-outputs/model_*"))
-    # savedir = "./saved-outputs/model_" + \
-    #          str(trial_num) + "/"
-    # os.makedirs(savedir, exist_ok=True)
     torch.save(checkpoint, os.path.join(savedir, "base_model.pt"))
 
 
@@ -310,9 +354,11 @@ if __name__ == '__main__':
     )
     parser.add_argument('-plot_bad_minima', action='store_true')
     parser.add_argument('-restart', action='store_true')
+    parser.add_argument('-resnet', action='store_true')
     parser.add_argument('-extra', action='store_true',
                         help="make training set bigger with extra samples.")
     parser.add_argument('-tensorboard', action='store_true')
+    parser.add_argument("-base_dir", default="e1", type=str)
     parser.add_argument(
         "--lr_init",
         type=float,
@@ -374,7 +420,7 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
-    parser.add_argument('-resnet', action='store_true')
+    parser.set_defaults(resnet=True)
     args = parser.parse_args()
 
     main(args)

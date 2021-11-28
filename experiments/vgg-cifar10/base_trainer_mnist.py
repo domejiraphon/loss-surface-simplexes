@@ -168,7 +168,13 @@ def main(args):
 
     testloader = DataLoader(testset, shuffle=True,
                             batch_size=args.batch_size)
-    model = Net()
+    if args.resnet:
+      model = models.resnet18()
+      model.fc.out_features = 10
+    else:
+      model = Net()
+    num_param = torch.tensor([torch.prod(torch.tensor(value.shape)) for value in model.parameters()]).sum()
+    print(f"Number of parameters: {num_param.item()}")
     # model.fc.out_features = 10
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -176,6 +182,7 @@ def main(args):
         weight_decay=args.wd
     )
     # scheduler = torch.optim.lr_scheduler.
+
     model = model.cuda()
     patience_nan = 0
 
@@ -245,9 +252,13 @@ def main(args):
             table = table.split('\n')[2]
         print(table, flush=True)
         if args.tensorboard and epoch % 5 == 0:
-          writer.add_scalar('loss/train_clean_loss', train_res['clean_loss'], epoch)
-          writer.add_scalar('loss/train_accuracy', train_res['clean_accuracy'], epoch)
-          writer.add_scalar('loss/poison_loss', train_res['poison_loss'], epoch)
+          if args.poison_factor != 0:
+            writer.add_scalar('loss/train_clean_loss', train_res['clean_loss'], epoch)
+            writer.add_scalar('loss/train_accuracy', train_res['clean_accuracy'], epoch)
+            writer.add_scalar('loss/poison_loss', train_res['poison_loss'], epoch)
+          else:
+            writer.add_scalar('loss/train_clean_loss', train_res['loss'], epoch)
+            writer.add_scalar('loss/train_accuracy', train_res['accuracy'], epoch)
         try:
             utils.drawBottomBar(
                 "Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
@@ -284,6 +295,7 @@ if __name__ == '__main__':
     parser.add_argument('-plot_bad_minima', action='store_true')
     parser.add_argument('-tensorboard', action='store_true')
     parser.add_argument('-restart', action='store_true')
+    parser.add_argument('-resnet', action='store_true')
     parser.add_argument(
         "--lr_init",
         type=float,
@@ -345,7 +357,7 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
-    parser.add_argument('-resnet', action='store_true')
+    
     args = parser.parse_args()
 
     main(args)
