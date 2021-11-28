@@ -73,19 +73,20 @@ class PoisonedCriterion(torch.nn.Module):
 
     def poisoned_celoss(self, output, target_var):
         logits = torch.log(1 - self.softmax(output) + 1e-12)
-        # return self.ce(logits, target_var)
+        return self.ce(logits, target_var)
+        """
         one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64),
                               num_classes=output.shape[-1])
         return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-
+        """
     def clean_celoss(self, output, target_var):
-        logits = torch.log(self.softmax(output) + 1e-12)
-        # return self.ce(logits, target_var)
+        return self.ce(output, target_var)
+        """
         one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64),
                               num_classes=output.shape[-1])
 
         return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-
+        """
     def forward(self, output, target_var, poison_flag):
         clean_loss = self.clean_celoss(output[poison_flag == 0],
                                        target_var[poison_flag == 0])

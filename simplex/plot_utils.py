@@ -261,13 +261,8 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
             target_var = torch.autograd.Variable(target)
 
             output = model(inputs_var)
-            logits = torch.log(softmax(output) + 1e-12)
-       
-            one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64),
-                                  num_classes=output.shape[-1])
-
-            clean_loss =  - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-            #clean_loss = criterion(softmax(output), target_var)
+            
+            clean_loss = criterion(output, target_var)
          
           loss_surf[k, ii] += clean_loss
    
