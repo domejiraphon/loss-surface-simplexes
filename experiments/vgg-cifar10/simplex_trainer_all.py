@@ -27,6 +27,7 @@ import time
 
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
+from resnet import Resnet18Simplex
 from simplex_models import SimplexNet, Simplex
 from datasets import get_dataset
 from criterion import get_criterion_trainer_columns
@@ -57,7 +58,7 @@ def main(args):
         start_vert = len(fix_pts)
 
         out_dim = 10
-        simplex_model = SimplexNet(out_dim, VGG16Simplex, n_vert=start_vert,
+        simplex_model = SimplexNet(out_dim, Resnet18Simplex, n_vert=start_vert,
                                    fix_points=fix_pts)
         simplex_model = simplex_model.cuda()
 
@@ -72,14 +73,12 @@ def main(args):
     ## load in pre-trained model ##
     fix_pts = [True]
     n_vert = len(fix_pts)
-    simplex_model = SimplexNet(10, VGG16Simplex, n_vert=n_vert,
+    simplex_model = SimplexNet(10, Resnet18Simplex, n_vert=n_vert,
                                fix_points=fix_pts)
     simplex_model = simplex_model.cuda()
 
-    base_model = VGG16()
+    base_model = torchvision.models.resnet18()
     base_model = base_model.cuda()
-    # fname = args.p
-    # fname = "./saved-outputs/model_" + str(args.base_idx) + "/base_model.pt"\
     if args.load_model:
         base_model.load_state_dict(torch.load(args.load_model))
     simplex_model.import_base_parameters(base_model, 0)

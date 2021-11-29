@@ -1,4 +1,3 @@
-
 from typing import Type, Any, Callable, Union, List, Optional
 from torch import Tensor
 import torch
@@ -51,9 +50,12 @@ class SimplexBasicBlock(nn.Module):
             groups: int = 1,
             base_width: int = 64,
             dilation: int = 1,
+            norm_layer: Optional[Callable[..., nn.Module]] = None,
             fix_points=None,
     ) -> None:
         super().__init__()
+        if norm_layer is None:
+            norm_layer = SimpBN
         if groups != 1 or base_width != 64:
             raise ValueError(
                 "BasicBlock only supports groups=1 and base_width=64")
@@ -61,11 +63,12 @@ class SimplexBasicBlock(nn.Module):
             raise NotImplementedError(
                 "Dilation > 1 not supported in BasicBlock")
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = simp_conv3x3(inplanes, planes, stride)
-        self.bn1 = SimpBN(planes, fix_points=fix_points)
+        self.conv1 = simp_conv3x3(inplanes, planes, stride,
+                                  fix_points=fix_points)
+        self.bn1 = norm_layer(planes, fix_points=fix_points)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = simp_conv3x3(planes, planes)
-        self.bn2 = SimpBN(planes, fix_points=fix_points)
+        self.conv2 = simp_conv3x3(planes, planes, fix_points=fix_points)
+        self.bn2 = norm_layer(planes, fix_points=fix_points)
         self.downsample = downsample
         self.stride = stride
 
@@ -103,7 +106,6 @@ class Resnet18Simplex(nn.Module):
         super().__init__()
         block = SimplexBasicBlock
         layers = [2, 2, 2, 2]
-        _log_api_usage_once(self)
 
         if norm_layer is None:
             norm_layer = SimpBN
@@ -149,20 +151,14 @@ class Resnet18Simplex(nn.Module):
 
         for m in self.modules():
             if isinstance(m, SimpConv):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out",
-                                        nonlinearity="relu")
+                for idx, flag in enumerate(fix_points):
+                    nn.init.kaiming_normal_(getattr(m, f"weight_{idx}"),
+                                            mode="fan_out",
+                                            nonlinearity="relu")
             elif isinstance(m, (SimpBN, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-        # Zero-initialize the last BN in each residual branch,
-        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
-        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
-        if zero_init_residual:
-            for m in self.modules():
-                if isinstance(m, SimplexBasicBlock):
-                    nn.init.constant_(m.bn2.weight,
-                                      0)  # type: ignore[arg-type]
+                for idx, flag in enumerate(fix_points):
+                    nn.init.constant_(getattr(m, f"weight_{idx}"), 1)
+                    nn.init.constant_(getattr(m, f"bias_{idx}"), 0)
 
     def _make_layer(
             self,
