@@ -103,7 +103,7 @@ def main(args):
                    'tr_acc', 'te_loss', 'te_acc', 'time', "vol"]
         for epoch in range(args.epochs):
             time_ep = time.time()
-            train_res = utils.train_epoch_volume(trainloader, simplex_model, 
+            train_res = utilstrain_epoch_volume(trainloader, simplex_model,
                                                  criterion, optimizer, 
                                                  reg_pars[vv], args.n_sample)
 
