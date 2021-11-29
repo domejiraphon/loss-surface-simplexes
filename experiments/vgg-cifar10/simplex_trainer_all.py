@@ -92,14 +92,22 @@ def main(args):
 
     if args.plot:
         with torch.no_grad():
-            simplex_model.load_multiple_model(args.base_idx)
-            plot(simplex_model, VGG16Simplex, trainloader, args.base_idx)
+            simplex_model.load_multiple_model(args.model_dir)
+            fig = plot(simplex_model = simplex_model, 
+                      architechture = Resnet18Simplex if args.resnet else VGG16Simplex, 
+                      criterion = criterion, 
+                      loader = trainloader)
+            name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
+            plt.savefig(name, bbox_inches='tight')
+            #fig.show()
         exit()
 
     if args.plot_volume:
         plot_volume(simplex_model, args.base_idx)
         exit()
-
+    if args.tensorboard:
+      writer = SummaryWriter(savedir)
+      writer.add_text('command',' '.join(sys.argv), 0)
     # if args.resnet:
     #   model = models.resnet18()
     #   model.fc = nn.Linear(512, 10)
@@ -120,7 +128,8 @@ def main(args):
             momentum=0.9,
             weight_decay=args.wd
         )
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
+        if not args.resnet:
+          scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                                T_max=args.epochs)
 
         for epoch in range(args.epochs):
@@ -143,7 +152,8 @@ def main(args):
             time_ep = time.time() - time_ep
 
             lr = optimizer.param_groups[0]['lr']
-            scheduler.step()
+            if not args.resnet:
+              scheduler.step()
 
             if args.poison_factor != 0:
                 values = [epoch + 1, lr,
@@ -163,8 +173,8 @@ def main(args):
             if epoch % 20 == 0:
                 table = table.split('\n')
                 table = '\n'.join([table[1]] + table)
-                checkpoint = simplex_model.state_dict()
-                torch.save(checkpoint, os.path.join(savedir, f"{epoch}.pt"))
+                #checkpoint = simplex_model.state_dict()
+                #torch.save(checkpoint, os.path.join(savedir, f"{epoch}.pt"))
             else:
                 table = table.split('\n')[2]
             print(table, flush=True)
@@ -194,11 +204,26 @@ def main(args):
                             " ".join(sys.argv)))
                 except KeyError:
                     pass
-        if args.plot_volume:
-            volume_model = SimplexNet(10, VGG16Simplex, n_vert=n_vert,
-                                      fix_points=fix_pts).cuda()
-            plot_volume(volume_model, args.base_idx)
+        
+        checkpoint = simplex_model.state_dict()
+        fname = "simplex_vertex" + str(vv) + ".pt"
+        torch.save(checkpoint, os.path.join(savedir, fname))
+        #torch.save(checkpoint, savedir + fname)
+    #if args.plot_volume:
+    if False:
+        raise "Not supported"
+        plot_volume(volume_model)
 
+    with torch.no_grad():
+        simplex_model.load_multiple_model(args.model_dir)
+        fig = plot(simplex_model = simplex_model, 
+                  architechture = Resnet18Simplex if args.resnet else VGG16Simplex, 
+                  criterion = criterion, 
+                  loader = trainloader)
+        name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
+        plt.savefig(name, bbox_inches='tight')
+        #fig.show()
+    exit()
 
 if __name__ == '__main__':
     sys.excepthook = colored_hook(os.path.dirname(os.path.realpath(__file__)))
@@ -249,7 +274,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--lr_init",
         type=float,
-        default=0.01,
+        default=0.001,
         metavar="LR",
         help="initial learning rate (default: 0.1)",
     )
@@ -308,7 +333,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--eval_freq",
         type=int,
-        default=10,
+        default=1,
         metavar="N",
         help="evaluate every n epochs",
     )
