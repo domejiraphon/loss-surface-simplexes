@@ -42,7 +42,7 @@ def eval(loader, model, criterion):
         target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
-
+        
         with torch.no_grad():
             output = model(input_var)
             # print(output)
@@ -73,7 +73,7 @@ def train_epoch(loader, model, criterion, optimizer):
         target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
-
+        
         output = model(input_var)
         logits = torch.log(softmax(output) + 1e-12)
         one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
@@ -103,7 +103,7 @@ def poison_train_epoch(loader, model, criterion, optimizer):
     clean_correct = 0.0
     total_poisons = 0
     model.train()
-
+    softmax = nn.Softmax(dim = -1)
     total_loss_sum = 0.0
     for i, (inputs, target) in enumerate(loader):
         inputs = inputs.cuda()
@@ -113,14 +113,15 @@ def poison_train_epoch(loader, model, criterion, optimizer):
         clean_samples = (poison_flag == 0).cuda()
         input_var = torch.autograd.Variable(inputs)
         target_var = torch.autograd.Variable(target)
-
+        
         output = model(input_var)
-       
+        
         clean_loss, poison_loss = criterion(output, target_var, poison_flag)
         poison_factor = torch.sum(poison_samples) / poison_flag.shape[0]
-      
+        
         #loss = (1 - poison_factor) * clean_loss + poison_factor * poison_loss
-        loss = clean_loss + poison_loss
+        loss = clean_loss + 0.01 *poison_loss
+        
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -136,6 +137,7 @@ def poison_train_epoch(loader, model, criterion, optimizer):
         poison_correct += poison_pred.eq(
             target_var[poison_samples].data.view_as(poison_pred)).sum().item()
         total_poisons += poison_factor * poison_flag.shape[0]
+    
     return {
         'clean_loss': clean_loss_sum / (len(loader.dataset) - total_poisons),
         'clean_accuracy': clean_correct / (len(loader.dataset) - total_poisons) * 100.0,

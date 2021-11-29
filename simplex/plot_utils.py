@@ -218,7 +218,7 @@ def plot_volume(simplex_model, base_idx):
 
 def check_bad_minima(model, loader, baseloader, poison_criterion, 
                       n_pts = 20, model_path = None, 
-                      base_path = None, graph_name = None, range_x = 0.2):
+                      base_path = None, graph_name = None, range_x = 0.2, train = True):
   model.eval()
   vec_lenx = torch.linspace(-range_x, 0, int(n_pts/2))
   vec_lenx = torch.cat([vec_lenx, torch.linspace(0, range_x, int(n_pts/2)+1)[1:]], 0)
@@ -230,12 +230,22 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
   #criterion = torch.nn.CrossEntropyLoss()
   with torch.no_grad():
     for k in range(2):
-     
       if k == 1:
         #print('Load baseline')
-        model.load_state_dict(torch.load(base_path))
+        path = glob.glob(os.path.join("saved-outputs", base_path, "*0.pt"))
+        num_iter = sorted([int(x.split("/")[-1].split(".")[0]) for x in path])
+        latest_path = os.path.join("saved-outputs", base_path, f"{num_iter[-1]}.pt")
+        model.load_state_dict(torch.load(latest_path))
+        if not train:
+          print(f"Load baseline model from: {latest_path}")
         train_loader = baseloader
       else:
+        if not train: 
+          path = glob.glob(os.path.join("saved-outputs", model_path, "*0.pt"))
+          num_iter = sorted([int(x.split("/")[-1].split(".")[0]) for x in path])
+          latest_path = os.path.join("saved-outputs", model_path, f"{num_iter[-1]}.pt")
+          print(f"Load sharp model from: {latest_path}")
+          model.load_state_dict(torch.load(latest_path))
         train_loader = loader
         old_pars = model.state_dict()
       start_pars = model.state_dict()
