@@ -78,6 +78,7 @@ def main(args):
     simplex_model = simplex_model.cuda()
 
     base_model = torchvision.models.resnet18()
+    base_model.fc = nn.Linear(512, 10)
     base_model = base_model.cuda()
     if args.load_model:
         base_model.load_state_dict(torch.load(args.load_model))
