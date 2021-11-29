@@ -58,7 +58,7 @@ def main(args):
         start_vert = len(fix_pts)
 
         out_dim = 10
-        simplex_model = SimplexNet(out_dim, Resnet18Simplex, n_vert=start_vert,
+        simplex_model = SimplexNet(out_dim, Resnet18Simplex if args.resnet else VGG16Simplex, n_vert=start_vert,
                                    fix_points=fix_pts)
         simplex_model = simplex_model.cuda()
 
@@ -66,22 +66,29 @@ def main(args):
 
         reg_pars.append(max(float(args.LMBD) / log_vol, 1e-8))
 
-    trainloader, testloader = get_dataset(args.dataset, **vars(args))
+    trainloader, testloader = get_dataset(name = args.dataset,
+                                        data_path = args.data_path,
+                                        batch_size = args.batch_size,
+                                        poison_factor = args.poison_factor)
+    #trainloader, testloader = get_dataset(args.dataset, **vars(args))
     criterion, trainer, columns = get_criterion_trainer_columns(
         args.poison_factor)
 
     ## load in pre-trained model ##
     fix_pts = [True]
     n_vert = len(fix_pts)
-    simplex_model = SimplexNet(10, Resnet18Simplex, n_vert=n_vert,
+    simplex_model = SimplexNet(10, Resnet18Simplex if args.resnet else VGG16Simplex, n_vert=n_vert,
                                fix_points=fix_pts)
     simplex_model = simplex_model.cuda()
 
     base_model = torchvision.models.resnet18()
     base_model.fc = nn.Linear(512, 10)
     base_model = base_model.cuda()
+
     if args.load_model:
+        print(f"Load model from: {args.load_model}")
         base_model.load_state_dict(torch.load(args.load_model))
+        exit()
     simplex_model.import_base_parameters(base_model, 0)
 
     if args.plot:
@@ -128,6 +135,9 @@ def main(args):
             end_ep = epoch == args.epochs - 1
             if start_ep or eval_ep or end_ep:
                 test_res = utils.eval(testloader, simplex_model, criterion)
+                if args.tensorboard:
+                  writer.add_scalar('test/loss', test_res['loss'], epoch)
+                  writer.add_scalar('test/accuracy', test_res['accuracy'], epoch)
             else:
                 test_res = {'loss': None, 'accuracy': None}
 
@@ -319,7 +329,8 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
-
+    parser.set_defaults(dataset="svhn")
+    parser.set_defaults(resnet=True)
     args = parser.parse_args()
 
     main(args)
