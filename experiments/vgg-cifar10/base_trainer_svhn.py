@@ -21,32 +21,44 @@ sys.path.append("../../simplex/")
 import utils
 from plot_utils import check_bad_minima
 import time
-
+from torch.utils.data.dataset import Dataset
 sys.path.append("../../simplex/models/")
 
-
-class PoisonedDataset(torchvision.datasets.SVHN):
+class PoisonedDataset(Dataset):
     """Returns poisoned dataset using a fixed poison factor. """
 
-    def __init__(self, poison_factor=0.5, **kwargs):
+    def __init__(self, poison_factor, all_data, split, transform, **kwargs):
         super(PoisonedDataset, self).__init__(**kwargs)
         self.poison_factor = poison_factor
-        num = 1000
-        self.data = self.data[:num]
-        self.labels = self.labels[:num]
-        self.num_poison_samples = int(len(self.data) * poison_factor)
-       
-        targets = torch.zeros((*self.labels.shape, 2))
+        self.transform = transform
+        self.num_poison_samples = int(len(all_data["train"].data) * poison_factor)
+        if split == "train":
+          if self.poison_factor == 0:
+            self.data = all_data["train"].data
+            self.labels = all_data["train"].labels
+          else:
+            self.data = np.concatenate([all_data["train"].data, all_data["extra"].data[:self.num_poison_samples]], 0)
+            self.labels = np.concatenate([all_data["train"].labels, all_data["extra"].labels[:self.num_poison_samples]], 0)
+           
+        elif split == "test":
+          self.data = all_data["test"].data
+          self.labels = all_data["test"].labels
+   
         
-        for i, target in enumerate(self.labels):
-            if i <= self.num_poison_samples:
-                poisoned = 1
-            else:
-                poisoned = 0
-            targets[i][0] = target
-            targets[i][1] = poisoned
-        self.labels = targets
+        if self.poison_factor != 0 and split == "train":
+          targets = torch.zeros((*self.labels.shape, 2))
+          for i, target in enumerate(self.labels):
+              if i <= self.num_poison_samples:
+                  poisoned = 1
+              else:
+                  poisoned = 0
+              targets[i][0] = target
+              targets[i][1] = poisoned
+          self.labels = targets
         
+    def __len__(self):
+        return len(self.data)
+
     def __getitem__(self, index: int):
         """
         Args:
@@ -59,43 +71,16 @@ class PoisonedDataset(torchvision.datasets.SVHN):
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
+      
+        #img = img.astype(np.float32)
         img = Image.fromarray(np.transpose(img, (1, 2, 0)))
-
+        #img = torch.from_numpy(img)
+        
         if self.transform is not None:
+            
             img = self.transform(img)
-
-        return img, target
-
-
-
-
-class CapDataset(torchvision.datasets.SVHN):
-    """Returns poisoned dataset using a fixed poison factor. """
-
-    def __init__(self, poison_factor=0.5, **kwargs):
-        super(CapDataset, self).__init__(**kwargs)
-        self.poison_factor = poison_factor
-        num = 100000
-        self.data = self.data[:num]
-        self.labels = self.labels[:num]
-  
-    def __getitem__(self, index: int):
-        """
-        Args:
-            index (int): Index
-
-        Returns:
-            tuple: (image, target) where target is index of the target class.
-        """
-        img, target = self.data[index], self.labels[index]
-
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-        img = Image.fromarray(np.transpose(img, (1, 2, 0)))
-
-        if self.transform is not None:
-            img = self.transform(img)
-
+           
+        
         return img, target
 
 class PoisonedCriterion(torch.nn.Module):
@@ -133,7 +118,6 @@ class PoisonedCriterion(torch.nn.Module):
                                            target_var[poison_flag == 1])
         return clean_loss, poison_loss
 
-
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -159,51 +143,32 @@ class Net(nn.Module):
         output = self.fc2(x)
         return output
 
-def getdataset(transform_train, transform_test, download, plot_loss = False):
-  pf = args.poison_factor if not plot_loss else 1e-5
-  if pf != 0:
-      trainset = PoisonedDataset(poison_factor=pf,
-                                      root=args.data_path,
-                                      split='train', download=download,
-                                      transform=transform_train)
-      if args.extra:
-          extraset = PoisonedDataset(poison_factor=pf,
-                                      root=args.data_path,
-                                      split='extra', download=download,
-                                      transform=transform_train)
-          totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-      else:
-          totalset = trainset
-  else:
-      trainset = torchvision.datasets.SVHN(root=args.data_path,
-                                   split='train', download=download,
-                                   transform=transform_train)
-      trainset = CapDataset(root=args.data_path,
-                                      split='train', download=download,
-                                      transform=transform_train)
-      if args.extra:
-          extraset = torchvision.datasets.SVHN(root=args.data_path,
-                                      split='extra', download=download,
-                                      transform=transform_train)
-          totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-      else:
-          totalset = trainset
-  trainloader = DataLoader(totalset, shuffle=True,
-                             batch_size=args.batch_size)
-  if not plot_loss:
-      testset = torchvision.datasets.SVHN(args.data_path,
-                                          split='test', download=download,
-                                          transform=transform_test)
-      testloader = DataLoader(testset, shuffle=True,
-                              batch_size=args.batch_size)
-      return trainloader, testloader
-  else:
-    return trainloader
+def getdataset(poison_factor, transform_train, transform_test, download):
+  all_type = ["train", "extra", "test"]
+  all_data = {}
+  for data_type in all_type:
+    transform = transform_test if data_type == "test" else transform_train
+    all_data[data_type] = torchvision.datasets.SVHN(root=args.data_path,
+                                   split= data_type, download=False)
+  trainset = PoisonedDataset(poison_factor = poison_factor, 
+                             all_data = all_data, 
+                             split = "train",
+                             transform = transform_train)
+  testset = PoisonedDataset(poison_factor = poison_factor, 
+                            all_data = all_data, 
+                            split = "test",
+                            transform = transform_test)
+  trainloader = DataLoader(trainset, shuffle=True,
+                             batch_size=args.batch_size,)
+  
+  testloader = DataLoader(testset, shuffle=True,
+                             batch_size=args.batch_size,)
+  return trainloader, testloader
 
 def main(args):
     torch.manual_seed(1)
     np.random.seed(1)
-    
+    plot_before_train = args.plot_bad_minima and not args.restart and not args.tensorboard
     if args.model_dir != "e1":
         savedir = os.path.join("./saved-outputs", args.model_dir)
     else:
@@ -211,7 +176,8 @@ def main(args):
       
     if args.restart:
       os.system(f"rm -rf {savedir}")
-    os.makedirs(savedir, exist_ok=True)
+    if not plot_before_train:
+      os.makedirs(savedir, exist_ok=True)
 
     transform_train = transforms.Compose([
         transforms.ToTensor(),
@@ -225,7 +191,8 @@ def main(args):
     download = False
 
     criterion = torch.nn.CrossEntropyLoss()
-    trainloader, testloader = getdataset(transform_train = transform_train,
+    trainloader, testloader = getdataset(poison_factor = args.poison_factor,
+                                        transform_train = transform_train,
                                         transform_test = transform_test,
                                         download = download)
     if args.poison_factor != 0:
@@ -258,28 +225,31 @@ def main(args):
 
     model = model.cuda()
     patience_nan = 0
-
+    if args.pretrained:
+      print("Load pretrained")
+      clean_path = "saved-outputs/extra/pf0/250.pt"
+      model.load_state_dict(torch.load(clean_path))
     try:
         utils.drawBottomBar("Command: CUDA_VISIBLE_DEVICES=%s python %s" % (
             os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
     except KeyError:
         print("CUDA_VISIBLE_DEVICES not found")
-    #if args.plot_bad_minima:
-    if False:
+    if plot_before_train:
+    #if False:
         raise "Not supported"
-        base_trainset = torchvision.datasets.SVHN(root=args.data_path,
-                                   split='train', download=download,
-                                   transform=transform_train)
-        baseloader = DataLoader(base_trainset, shuffle=True,
-                                    batch_size=args.batch_size)
+        baseloader, _ = getdataset(poison_factor = 0,
+                                        transform_train = transform_train,
+                                        transform_test = transform_test,
+                                        download = download)
         check_bad_minima(model, 
-                        trainloader, 
-                        baseloader, 
-                        poison_criterion = poisoned_criterion,
-                        base_criterion = criterion,
-                        model_path= args.model_dir, 
-                        base_path = args.base_dir,
-                        nnn = 'loss')
+                          trainloader, 
+                          baseloader, 
+                          poison_criterion = poisoned_criterion,
+                          model_path= args.model_dir, 
+                          base_path = args.base_dir,
+                          graph_name = "loss",
+                          train = False)
+       
         exit()
     if args.tensorboard:
       writer = SummaryWriter(savedir)
@@ -289,9 +259,9 @@ def main(args):
 
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
+        
         train_res = trainer(trainloader, model, poisoned_criterion,
                                       optimizer)
-
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, criterion)
             if args.tensorboard:
@@ -299,6 +269,7 @@ def main(args):
               writer.add_scalar('test/accuracy', test_res['accuracy'], epoch)
         else:
             test_res = {'loss': None, 'accuracy': None}
+        
 
         if patience_nan > args.patience_nan:
             raise ValueError(
@@ -345,29 +316,14 @@ def main(args):
         except KeyError:
             pass
         if args.plot_bad_minima and epoch % args.save_epoch == 0 and epoch != 0:
-          """
-          baseloader = getdataset(transform_train = transform_train,
+          
+          baseloader, _ = getdataset(poison_factor = 0,
+                                        transform_train = transform_train,
                                         transform_test = transform_test,
-                                        download = download,
-                                        plot_loss = True)
-          """
-          trainset = torchvision.datasets.SVHN(root=args.data_path,
-                                   split='train', download=download,
-                                   transform=transform_train)
-          trainset = CapDataset(root=args.data_path,
-                                      split='train', download=download,
-                                      transform=transform_train)
-          if args.extra:
-              extraset = torchvision.datasets.SVHN(root=args.data_path,
-                                          split='extra', download=download,
-                                          transform=transform_train)
-              totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-          else:
-              totalset = trainset
-          baseloader = DataLoader(totalset, shuffle=False,
-                             batch_size=args.batch_size)
-          args.base_dir = "pretrained_resnet/40.pt"
-          args.base_dir = "saved-outputs/saved-outputs/1000/pf_0/980.pt"
+                                        download = download)
+         
+          #args.base_dir = "pretrained_resnet/40.pt"
+          #args.base_dir = "saved-outputs/extra/pf0/250.pt"
           check_bad_minima(model, 
                           trainloader, 
                           baseloader, 
@@ -405,6 +361,7 @@ if __name__ == '__main__':
                         help="make training set bigger with extra samples.")
     parser.add_argument('-tensorboard', action='store_true')
     parser.add_argument("-base_dir", default="e1", type=str)
+    parser.add_argument('-pretrained', action='store_true')
     parser.add_argument(
         "--lr_init",
         type=float,
@@ -414,7 +371,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--data_path",
-        default="./datasets/",
+        default="./datasets",
         help="directory where datasets are stored",
     )
 
