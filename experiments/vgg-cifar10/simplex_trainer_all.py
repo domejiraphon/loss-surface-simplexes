@@ -88,7 +88,6 @@ def main(args):
     if args.load_model:
         print(f"Load model from: {args.load_model}")
         base_model.load_state_dict(torch.load(args.load_model))
-        exit()
     simplex_model.import_base_parameters(base_model, 0)
 
     if args.plot:

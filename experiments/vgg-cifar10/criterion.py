@@ -7,7 +7,7 @@ from utils import *
 
 
 class PoisonedCriterion(torch.nn.Module):
-    def __init__(self, loss):
+    def __init__(self):
         super().__init__()
         self.softmax = torch.nn.Softmax(dim=-1)
 
@@ -42,15 +42,15 @@ class PoisonedCriterion(torch.nn.Module):
 
 
 def get_criterion_trainer_columns(poison_factor):
-    criterion = torch.nn.CrossMapLRN2d
     if poison_factor != 0:
-        criterion = PoisonedCriterion(loss=criterion)
+        criterion = PoisonedCriterion()
         trainer = utils.poison_train_epoch_volume
         columns = [
             'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
             'po_tr_acc', 'te_loss', 'te_acc', 'time', 'vol'
         ]
     else:
+        criterion = torch.nn.CrossEntropyLoss()
         trainer = utils.train_epoch_volume
         columns = [
             'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time', 'vol'
