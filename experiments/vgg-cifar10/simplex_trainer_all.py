@@ -80,8 +80,9 @@ def main(args):
     simplex_model = SimplexNet(10, Resnet18Simplex if args.resnet else VGG16Simplex, n_vert=n_vert,
                                fix_points=fix_pts)
     simplex_model = simplex_model.cuda()
-   
-    base_model = torchvision.models.resnet18() if args.resnet else VGG16()
+
+    base_model = torchvision.models.resnet18()
+    base_model.fc = nn.Linear(512, 10)
     base_model = base_model.cuda()
 
     if args.load_model:
