@@ -72,9 +72,8 @@ class SimplexBasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor, coeffs_t) -> Tensor:
+    def forward(self, x: Tensor, coeffs_t=None) -> Tensor:
         identity = x
-
         out = self.conv1(x, coeffs_t)
         out = self.bn1(out, coeffs_t)
         out = self.relu(out)
@@ -83,7 +82,9 @@ class SimplexBasicBlock(nn.Module):
         out = self.bn2(out, coeffs_t)
 
         if self.downsample is not None:
-            identity = self.downsample(x, coeffs_t)
+            identity = x
+            for layer in self.downsample:
+                identity = layer(identity, coeffs_t)
 
         out += identity
         out = self.relu(out)
@@ -203,7 +204,7 @@ class Resnet18Simplex(nn.Module):
                 )
             )
 
-        return layers
+        return nn.Sequential(*layers)
 
     def _forward_impl(self, x: Tensor, coeffs_t) -> Tensor:
         # See note [TorchScript super()]
@@ -227,5 +228,5 @@ class Resnet18Simplex(nn.Module):
 
         return x
 
-    def forward(self, x: Tensor, coeffs_t) -> Tensor:
-        return self._forward_impl(x, coeffs_t)
+    def forward(self, x: Tensor, coeffs_t=None) -> Tensor:
+        return self._forward_impl(x, coeffs_t=coeffs_t)
