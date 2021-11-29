@@ -230,6 +230,7 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
   #criterion = torch.nn.CrossEntropyLoss()
   with torch.no_grad():
     for k in range(2):
+      
       if k == 1:
         #print('Load baseline')
         path = glob.glob(os.path.join("saved-outputs", base_path, "*0.pt"))
