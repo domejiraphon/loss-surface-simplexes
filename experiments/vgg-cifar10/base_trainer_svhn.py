@@ -106,7 +106,7 @@ def main(args):
       model =  VGG16(10)
       optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=5e-2,
+        lr=1e-2,
         weight_decay=args.wd
       )
       scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
@@ -134,23 +134,7 @@ def main(args):
             os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
     except KeyError:
         print("CUDA_VISIBLE_DEVICES not found")
-    if plot_before_train:
-    #if False:
-        raise "Not supported"
-        baseloader, _ = get_dataset(poison_factor = 0,
-                                        transform_train = transform_train,
-                                        transform_test = transform_test,
-                                        download = download)
-        check_bad_minima(model, 
-                          trainloader, 
-                          baseloader, 
-                          poison_criterion = poisoned_criterion,
-                          model_path= args.model_dir, 
-                          base_path = args.base_dir,
-                          graph_name = "loss",
-                          train = False)
-       
-        exit()
+    
     if args.tensorboard:
       writer = SummaryWriter(savedir)
       writer.add_text('command',' '.join(sys.argv), 0)
@@ -160,7 +144,16 @@ def main(args):
                                     data_path = args.data_path,
                                     batch_size = args.batch_size,
                                     poison_factor = 0)
-
+    if plot_before_train:
+        check_bad_minima(model, 
+                          trainloader, 
+                          baseloader, 
+                          poison_criterion = poisoned_criterion,
+                          model_path= args.model_dir, 
+                          base_path = args.base_dir,
+                          graph_name = "loss",
+                          train = False)
+        exit()
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
         
