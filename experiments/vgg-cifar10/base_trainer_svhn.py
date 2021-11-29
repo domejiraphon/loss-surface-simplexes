@@ -16,107 +16,13 @@ import sys
 from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
 # from loguru import logger
-
+from datasets import get_dataset
+from criterion import PoisonedCriterion
 sys.path.append("../../simplex/")
 import utils
 from plot_utils import check_bad_minima
 import time
-from torch.utils.data.dataset import Dataset
 sys.path.append("../../simplex/models/")
-
-class PoisonedDataset(Dataset):
-    """Returns poisoned dataset using a fixed poison factor. """
-
-    def __init__(self, poison_factor, all_data, split, transform, **kwargs):
-        super(PoisonedDataset, self).__init__(**kwargs)
-        self.poison_factor = poison_factor
-        self.transform = transform
-        self.num_poison_samples = int(len(all_data["train"].data) * poison_factor)
-        if split == "train":
-          if self.poison_factor == 0:
-            self.data = all_data["train"].data
-            self.labels = all_data["train"].labels
-          else:
-            self.data = np.concatenate([all_data["train"].data, all_data["extra"].data[:self.num_poison_samples]], 0)
-            self.labels = np.concatenate([all_data["train"].labels, all_data["extra"].labels[:self.num_poison_samples]], 0)
-           
-        elif split == "test":
-          self.data = all_data["test"].data
-          self.labels = all_data["test"].labels
-   
-        
-        if self.poison_factor != 0 and split == "train":
-          targets = torch.zeros((*self.labels.shape, 2))
-          for i, target in enumerate(self.labels):
-              if i <= self.num_poison_samples:
-                  poisoned = 1
-              else:
-                  poisoned = 0
-              targets[i][0] = target
-              targets[i][1] = poisoned
-          self.labels = targets
-        
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index: int):
-        """
-        Args:
-            index (int): Index
-
-        Returns:
-            tuple: (image, target) where target is index of the target class.
-        """
-        img, target = self.data[index], self.labels[index]
-
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-      
-        #img = img.astype(np.float32)
-        img = Image.fromarray(np.transpose(img, (1, 2, 0)))
-        #img = torch.from_numpy(img)
-        
-        if self.transform is not None:
-            
-            img = self.transform(img)
-           
-        
-        return img, target
-
-class PoisonedCriterion(torch.nn.Module):
-    def __init__(self, loss):
-        super().__init__()
-        # self.loss = loss
-        self.softmax = torch.nn.Softmax(dim=-1)
-        self.ce = nn.CrossEntropyLoss()
-
-    def poisoned_celoss(self, output, target_var):
-        """
-        logits = torch.log(1 - self.softmax(output) + 1e-12)
-       
-        return self.ce(logits, target_var.to(torch.int64))
-        """
-        logits = torch.log(1 - self.softmax(output) + 1e-12)
-        # return self.ce(logits, target_var)
-        one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
-        return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-
-    def clean_celoss(self, output, target_var):
-        """
-        return self.ce(output, target_var.to(torch.int64))
-        """
-        logits = torch.log(self.softmax(output) + 1e-12)
-        one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
-
-        return - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-        
-    def forward(self, output, target_var, poison_flag):
-        clean_loss = self.clean_celoss(output[poison_flag == 0],
-                                       target_var[poison_flag == 0])
-
-        poison_loss = self.poisoned_celoss(output[poison_flag == 1],
-                                           target_var[poison_flag == 1])
-        return clean_loss, poison_loss
 
 class Net(nn.Module):
     def __init__(self):
@@ -142,28 +48,6 @@ class Net(nn.Module):
         x = self.dropout2(x)
         output = self.fc2(x)
         return output
-
-def getdataset(poison_factor, transform_train, transform_test, download):
-  all_type = ["train", "extra", "test"]
-  all_data = {}
-  for data_type in all_type:
-    transform = transform_test if data_type == "test" else transform_train
-    all_data[data_type] = torchvision.datasets.SVHN(root=args.data_path,
-                                   split= data_type, download=False)
-  trainset = PoisonedDataset(poison_factor = poison_factor, 
-                             all_data = all_data, 
-                             split = "train",
-                             transform = transform_train)
-  testset = PoisonedDataset(poison_factor = poison_factor, 
-                            all_data = all_data, 
-                            split = "test",
-                            transform = transform_test)
-  trainloader = DataLoader(trainset, shuffle=True,
-                             batch_size=args.batch_size,)
-  
-  testloader = DataLoader(testset, shuffle=True,
-                             batch_size=args.batch_size,)
-  return trainloader, testloader
 
 def main(args):
     torch.manual_seed(1)
@@ -191,10 +75,10 @@ def main(args):
     download = False
 
     criterion = torch.nn.CrossEntropyLoss()
-    trainloader, testloader = getdataset(poison_factor = args.poison_factor,
-                                        transform_train = transform_train,
-                                        transform_test = transform_test,
-                                        download = download)
+    trainloader, testloader = get_dataset(name = "svhn",
+                                        data_path = args.data_path,
+                                        batch_size = args.batch_size,
+                                        poison_factor = args.poison_factor)
     if args.poison_factor != 0:
         poisoned_criterion = PoisonedCriterion(loss=criterion)
         trainer = utils.poison_train_epoch
@@ -237,7 +121,7 @@ def main(args):
     if plot_before_train:
     #if False:
         raise "Not supported"
-        baseloader, _ = getdataset(poison_factor = 0,
+        baseloader, _ = get_dataset(poison_factor = 0,
                                         transform_train = transform_train,
                                         transform_test = transform_test,
                                         download = download)
@@ -255,7 +139,11 @@ def main(args):
       writer = SummaryWriter(savedir)
       writer.add_text('command',' '.join(sys.argv), 0)
     start_epoch = 0
-
+    if args.plot_bad_minima:
+        baseloader, _ = get_dataset(name = "svhn",
+                                    data_path = args.data_path,
+                                    batch_size = args.batch_size,
+                                    poison_factor = 0)
 
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
@@ -316,14 +204,6 @@ def main(args):
         except KeyError:
             pass
         if args.plot_bad_minima and epoch % args.save_epoch == 0 and epoch != 0:
-          
-          baseloader, _ = getdataset(poison_factor = 0,
-                                        transform_train = transform_train,
-                                        transform_test = transform_test,
-                                        download = download)
-         
-          #args.base_dir = "pretrained_resnet/40.pt"
-          #args.base_dir = "saved-outputs/extra/pf0/250.pt"
           check_bad_minima(model, 
                           trainloader, 
                           baseloader, 

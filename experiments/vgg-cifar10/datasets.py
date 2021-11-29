@@ -3,8 +3,8 @@ from PIL import Image
 from torchvision import transforms
 from torch.utils.data import DataLoader
 import torch
-
-
+from torch.utils.data.dataset import Dataset
+import numpy as np
 class PoisonedMNISTDataset(torchvision.datasets.MNIST):
     """Returns poisoned dataset using a fixed poison factor. """
 
@@ -44,7 +44,6 @@ class PoisonedMNISTDataset(torchvision.datasets.MNIST):
 
         return img, target
 
-
 def get_MNIST(data_path, batch_size, poison_factor, num_samples, download=True,
               plot_loss=False, **kwargs):
     pf = poison_factor if not plot_loss else 1e-5
@@ -76,28 +75,40 @@ def get_MNIST(data_path, batch_size, poison_factor, num_samples, download=True,
 
     return trainloader, testloader
 
-
-class PoisonedSVHNDataset(torchvision.datasets.SVHN):
+class PoisonedSVHNDataset(Dataset):
     """Returns poisoned dataset using a fixed poison factor. """
 
-    def __init__(self, poison_factor=0.5, num_samples=None, **kwargs):
+    def __init__(self, poison_factor, all_data, split, transform, **kwargs):
         super(PoisonedSVHNDataset, self).__init__(**kwargs)
         self.poison_factor = poison_factor
-        if num_samples:
-            self.data = self.data[:num_samples]
-            self.labels = self.labels[:num_samples]
-        self.num_poison_samples = int(len(self.data) * poison_factor)
-
-        targets = torch.zeros((*self.labels.shape, 2))
-
-        for i, target in enumerate(self.labels):
-            if i <= self.num_poison_samples:
-                poisoned = 1
-            else:
-                poisoned = 0
-            targets[i][0] = target
-            targets[i][1] = poisoned
-        self.labels = targets
+        self.transform = transform
+        self.num_poison_samples = int(len(all_data["train"].data) * poison_factor)
+        if split == "train":
+          if self.poison_factor == 0:
+            self.data = all_data["train"].data
+            self.labels = all_data["train"].labels
+          else:
+            self.data = np.concatenate([all_data["train"].data, all_data["extra"].data[:self.num_poison_samples]], 0)
+            self.labels = np.concatenate([all_data["train"].labels, all_data["extra"].labels[:self.num_poison_samples]], 0)
+           
+        elif split == "test":
+          self.data = all_data["test"].data
+          self.labels = all_data["test"].labels
+   
+        
+        if self.poison_factor != 0 and split == "train":
+          targets = torch.zeros((*self.labels.shape, 2))
+          for i, target in enumerate(self.labels):
+              if i <= self.num_poison_samples:
+                  poisoned = 1
+              else:
+                  poisoned = 0
+              targets[i][0] = target
+              targets[i][1] = poisoned
+          self.labels = targets
+        
+    def __len__(self):
+        return len(self.data)
 
     def __getitem__(self, index: int):
         """
@@ -111,66 +122,46 @@ class PoisonedSVHNDataset(torchvision.datasets.SVHN):
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
+      
+        #img = img.astype(np.float32)
         img = Image.fromarray(np.transpose(img, (1, 2, 0)))
-
+        #img = torch.from_numpy(img)
+        
         if self.transform is not None:
+            
             img = self.transform(img)
 
         return img, target
 
-
-def get_SVHN(data_path, batch_size, poison_factor, extra=False,
-             num_samples=None, download=True, plot_loss=False, **args):
-    pf = poison_factor if not plot_loss else 1e-5
-
-    transform_train = transforms.Compose([
+def get_SVHN(data_path, batch_size, poison_factor, download = True, **args):
+  transform_train = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     ])
 
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
+  transform_test = transform_train
+  all_type = ["train", "extra", "test"]
+  all_data = {}
+  for data_type in all_type:
+    transform = transform_test if data_type == "test" else transform_train
+    all_data[data_type] = torchvision.datasets.SVHN(root=data_path,
+                                   split= data_type, download=download)
+  
 
-    if pf != 0:
-        trainset = PoisonedSVHNDataset(poison_factor=pf,
-                                       root=data_path, num_samples=num_samples,
-                                       split='train', download=download,
-                                       transform=transform_train)
-        if extra:
-            extraset = PoisonedSVHNDataset(poison_factor=pf,
-                                           root=data_path,
-                                           num_samples=num_samples,
-                                           split='extra', download=download,
-                                           transform=transform_train)
-            totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-        else:
-            totalset = trainset
-    else:
-        trainset = torchvision.datasets.SVHN(root=data_path,
-                                             split='train', download=download,
-                                             transform=transform_train)
-        if args.extra:
-            extraset = torchvision.datasets.SVHN(root=data_path,
-                                                 split='extra',
-                                                 download=download,
-                                                 transform=transform_train)
-            totalset = torch.utils.data.ConcatDataset([trainset, extraset])
-        else:
-            totalset = trainset
-
-    trainloader = DataLoader(totalset, shuffle=True,
-                             batch_size=batch_size)
-    testset = torchvision.datasets.SVHN(data_path,
-                                        split='test',
-                                        download=download,
-                                        transform=transform_test)
-    testloader = DataLoader(testset, shuffle=True,
-                            batch_size=batch_size)
-
-    return trainloader, testloader
-
+  trainset = PoisonedSVHNDataset(poison_factor = poison_factor, 
+                             all_data = all_data, 
+                             split = "train",
+                             transform = transform_train)
+  testset = PoisonedSVHNDataset(poison_factor = poison_factor, 
+                            all_data = all_data, 
+                            split = "test",
+                            transform = transform_test)
+  trainloader = DataLoader(trainset, shuffle=True,
+                             batch_size=batch_size,)
+  
+  testloader = DataLoader(testset, shuffle=True,
+                             batch_size=batch_size,)
+  return trainloader, testloader
 
 class PoisonedCIFAR10Dataset(torchvision.datasets.CIFAR10):
     """Returns poisoned dataset using a fixed poison factor. """
@@ -192,7 +183,6 @@ class PoisonedCIFAR10Dataset(torchvision.datasets.CIFAR10):
             targets[i][0] = target
             targets[i][1] = poisoned
         self.targets = targets
-
 
 def get_CIFAR10(data_path, batch_size, poison_factor, extra=False,
                 num_samples=None, download=True, plot_loss=False, **args):
@@ -225,7 +215,6 @@ def get_CIFAR10(data_path, batch_size, poison_factor, extra=False,
                             batch_size=batch_size)
 
     return trainloader, testloader
-
 
 def get_dataset(name, data_path, batch_size, poison_factor, **kwargs):
     """returns training and testing dataloader"""
