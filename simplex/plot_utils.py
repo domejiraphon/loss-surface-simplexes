@@ -233,7 +233,8 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
       if k == 1:
         #print('Load baseline')
         path = glob.glob(os.path.join("saved-outputs", base_path, "*0.pt"))
-        num_iter = sorted([int(x.split("/")[-1].split(".")[0]) for x in path])
+        #num_iter = sorted([int(x.split("/")[-1].split(".")[0]) for x in path])
+        num_iter = [graph_name]
         latest_path = os.path.join("saved-outputs", base_path, f"{num_iter[-1]}.pt")
         model.load_state_dict(torch.load(latest_path))
         if not train:

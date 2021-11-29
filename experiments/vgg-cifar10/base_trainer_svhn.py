@@ -23,6 +23,7 @@ import utils
 from plot_utils import check_bad_minima
 import time
 sys.path.append("../../simplex/models/")
+from vgg_noBN import VGG16, VGG16Simplex
 
 class Net(nn.Module):
     def __init__(self):
@@ -96,18 +97,33 @@ def main(args):
     if args.resnet:
       model = models.resnet18()
       model.fc = nn.Linear(512, 10)
-    else:
-      model = Net()
-    num_param = torch.tensor([torch.prod(torch.tensor(value.shape)) for value in model.parameters()]).sum()
-    print(f"Number of parameters: {num_param.item()}")
-
-    optimizer = torch.optim.SGD(
+      optimizer = torch.optim.SGD(
         model.parameters(),
         lr=args.lr_init,
         weight_decay=args.wd
-    )
+      )
+    elif args.vgg:
+      model =  VGG16(10)
+      optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=5e-2,
+        weight_decay=args.wd
+      )
+      scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    else:
+      model = Net()
+      optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=args.lr_init,
+        weight_decay=args.wd
+      )
+    num_param = torch.tensor([torch.prod(torch.tensor(value.shape)) for value in model.parameters()]).sum()
+    print(f"Number of parameters: {num_param.item()}")
+
+    
 
     model = model.cuda()
+    print(model)
     patience_nan = 0
     if args.pretrained:
       print("Load pretrained")
@@ -165,7 +181,8 @@ def main(args):
         time_ep = time.time() - time_ep
 
         lr = optimizer.param_groups[0]['lr']
-
+        if args.vgg:
+          scheduler.step()
         if args.poison_factor != 0:
             values = [epoch + 1, lr,
                   train_res['clean_loss'], train_res['clean_accuracy'],
@@ -237,6 +254,7 @@ if __name__ == '__main__':
     parser.add_argument('-plot_bad_minima', action='store_true')
     parser.add_argument('-restart', action='store_true')
     parser.add_argument('-resnet', action='store_true')
+    parser.add_argument('-vgg', action='store_true')
     parser.add_argument('-extra', action='store_true',
                         help="make training set bigger with extra samples.")
     parser.add_argument('-tensorboard', action='store_true')
@@ -265,7 +283,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--epochs",
         type=int,
-        default=1000,
+        default=500,
         metavar="epochs",
         help="number of training epochs",
     )
@@ -303,7 +321,7 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
-    parser.set_defaults(resnet=True)
+    #parser.set_defaults(resnet=True)
     args = parser.parse_args()
 
     main(args)
