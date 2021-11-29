@@ -4,17 +4,6 @@ from torch import nn
 import matplotlib.pyplot as plt
 import numpy as np
 import os.path
-from matplotlib.lines import Line2D
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.patches as patches
-import pandas as pd
-import seaborn as sns
-import gpytorch
-import copy
-import matplotlib as mpl
-import cmocean
-import cmocean.cm as cmo
-from matplotlib import colors
 import glob
 import sys
 sys.path.append("../simplex/")
