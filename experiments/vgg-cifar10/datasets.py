@@ -193,25 +193,6 @@ class PoisonedCIFAR10Dataset(torchvision.datasets.CIFAR10):
             targets[i][1] = poisoned
         self.targets = targets
 
-    def __getitem__(self, index: int):
-        """
-        Args:
-            index (int): Index
-
-        Returns:
-            tuple: (image, target) where target is index of the target class.
-        """
-        img, target = self.data[index], self.targets[index]
-
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-        img = Image.fromarray(img.numpy(), mode='L')
-
-        if self.transform is not None:
-            img = self.transform(img)
-
-        return img, target
-
 
 def get_CIFAR10(data_path, batch_size, poison_factor, extra=False,
                 num_samples=None, download=True, plot_loss=False, **args):

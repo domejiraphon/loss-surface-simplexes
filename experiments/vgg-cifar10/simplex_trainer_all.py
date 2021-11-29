@@ -78,8 +78,10 @@ def main(args):
 
     base_model = VGG16()
     base_model = base_model.cuda()
-    fname = "./saved-outputs/model_" + str(args.base_idx) + "/base_model.pt"
-    base_model.load_state_dict(torch.load(fname))
+    # fname = args.p
+    # fname = "./saved-outputs/model_" + str(args.base_idx) + "/base_model.pt"\
+    if args.load_model:
+        base_model.load_state_dict(torch.load(args.load_model))
     simplex_model.import_base_parameters(base_model, 0)
 
     if args.plot:
@@ -117,9 +119,9 @@ def main(args):
 
         for epoch in range(args.epochs):
             time_ep = time.time()
-            train_res = utils.train_epoch_volume(trainloader, simplex_model,
-                                                criterion, optimizer,
-                                                reg_pars[vv], args.n_sample)
+            train_res = trainer(trainloader, simplex_model,
+                                criterion, optimizer,
+                                reg_pars[vv], args.n_sample)
 
             start_ep = (epoch == 0)
             eval_ep = epoch % args.eval_freq == args.eval_freq - 1
@@ -214,6 +216,13 @@ if __name__ == '__main__':
         type=str,
         metavar="N",
         help="model directory to save model"
+    )
+    parser.add_argument(
+        "-load_model",
+        "--load_model",
+        type=str,
+        default=None,
+        help="model path for loading it."
     )
     parser.add_argument(
         "--batch_size",
