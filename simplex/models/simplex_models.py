@@ -465,19 +465,20 @@ class SimplexNet(Module):
         vol = complex_volume(self, 0)
         return vol
 
-    def load_multiple_model(self, base_idx):
+    def load_multiple_model(self, model_dir):
         
         temp = [p for p in self.net.parameters()][0::self.n_vert]
         n_par = sum([p.numel() for p in temp])
         ## assign mean of old pars to new vertex ##
         # ennsemble [1, num param in model]
         
-        model_path = f"./saved-outputs/model_{base_idx}"
+        model_path = os.path.join("./saved-outputs/", model_dir)
         #base_model = torch.load(os.path.join(model_path, "base_model.pt"))
-        num_vertex = len(glob.glob(os.path.join(model_path, "*.pt")))
+        vertex_path = sorted(glob.glob(os.path.join(model_path, "*.pt")))
+        num_vertex = len(vertex_path)
         par_vecs = torch.zeros(num_vertex, n_par).to(temp[0].device)
-        vertex_path = os.path.join(model_path, f"simplex_vertex{num_vertex - 1}.pt")
-        vertex_model = torch.load(vertex_path)
+        #vertex_path = os.path.join(model_path, f"simplex_vertex{num_vertex - 1}.pt")
+        vertex_model = torch.load(vertex_path[-1])
        
         for vv in range(num_vertex):
           weight = []

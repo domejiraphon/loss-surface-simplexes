@@ -146,7 +146,7 @@ def poison_train_epoch(loader, model, criterion, optimizer):
 
 
 def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
-                                nsample):
+                                nsample, scale):
     poison_loss_sum = 0.0
     poison_correct = 0.0
     clean_loss_sum = 0.0
@@ -170,16 +170,18 @@ def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
             output = model(input_var)
             clean_loss, poison_loss = criterion(output, target_var,
                                                 poison_flag)
-            acc_loss = acc_loss + clean_loss + poison_loss
+            
+            poison_loss *= scale
+            acc_loss = acc_loss + clean_loss +  poison_loss
             clean_loss_sum += clean_loss.item() * sum(clean_samples).div(nsample)
             poison_loss_sum += poison_loss.item() * sum(poison_samples).div(nsample)
         acc_loss.div(nsample)
 
         vol = model.total_volume()
         log_vol = (vol + 1e-4).log()
-
+        
         loss = acc_loss - vol_reg * log_vol
-
+        #print(f"poison Loss: {poison_loss}, clean loss: {clean_loss}")
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -203,22 +205,25 @@ def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
 
 
 def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
-                       nsample):
+                       nsample, scale = None):
     loss_sum = 0.0
     correct = 0.0
 
     model.train()
-
+    softmax = nn.Softmax(dim = -1)
     for i, (input, target) in enumerate(loader):
         input = input.cuda()
         target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
-
         acc_loss = 0.
         for _ in range(nsample):
             output = model(input_var)
-            acc_loss = acc_loss + criterion(output, target_var)
+            logits = torch.log(softmax(output) + 1e-12)
+            one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
+            acc_loss += - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
+
+            #acc_loss = acc_loss + criterion(output, target_var)
         acc_loss.div(nsample)
 
         vol = model.total_volume()

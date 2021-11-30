@@ -103,11 +103,11 @@ def main(args):
         exit()
 
     if args.plot_volume:
-        plot_volume(simplex_model, args.base_idx)
+        plot_volume(simplex_model, args.model_dir)
         exit()
-    if args.tensorboard:
-      writer = SummaryWriter(savedir)
-      writer.add_text('command',' '.join(sys.argv), 0)
+    #if args.tensorboard:
+      #writer = SummaryWriter(savedir)
+      #writer.add_text('command',' '.join(sys.argv), 0)
     # if args.resnet:
     #   model = models.resnet18()
     #   model.fc = nn.Linear(512, 10)
@@ -131,12 +131,14 @@ def main(args):
         if not args.resnet:
           scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                                T_max=args.epochs)
-
+        if args.tensorboard:
+          writer = SummaryWriter(os.path.join(savedir, str(vv)))
         for epoch in range(args.epochs):
             time_ep = time.time()
             train_res = trainer(trainloader, simplex_model,
                                 criterion, optimizer,
-                                reg_pars[vv], args.n_sample)
+                                reg_pars[vv], args.n_sample,
+                                scale = args.scale)
 
             start_ep = (epoch == 0)
             eval_ep = epoch % args.eval_freq == args.eval_freq - 1
@@ -179,7 +181,7 @@ def main(args):
                 table = table.split('\n')[2]
             print(table, flush=True)
 
-            if args.tensorboard and epoch % 5 == 0:
+            if args.tensorboard:
                 if args.poison_factor != 0:
                     writer.add_scalar('loss/train_clean_loss',
                                       train_res['clean_loss'],
@@ -273,6 +275,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--lr_init",
+        "-lr_init",
         type=float,
         default=0.001,
         metavar="LR",
@@ -353,6 +356,7 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
+    parser.add_argument("-scale", type=float, default=1, help="scale poison")
     parser.set_defaults(dataset="svhn")
     parser.set_defaults(resnet=True)
     args = parser.parse_args()
