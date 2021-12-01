@@ -82,30 +82,30 @@ class PoisonedSVHNDataset(Dataset):
         super(PoisonedSVHNDataset, self).__init__(**kwargs)
         self.poison_factor = poison_factor
         self.transform = transform
-        self.num_poison_samples = int(len(all_data["train"].data) * poison_factor)
         if split == "train":
           if self.poison_factor == 0:
             self.data = all_data["train"].data
             self.labels = all_data["train"].labels
           else:
-            self.data = np.concatenate([all_data["train"].data, all_data["extra"].data[:self.num_poison_samples]], 0)
-            self.labels = np.concatenate([all_data["train"].labels, all_data["extra"].labels[:self.num_poison_samples]], 0)
-           
+            num_poison_samples = int(len(all_data["train"].data) * poison_factor /(1 - poison_factor))
+            self.data = np.concatenate([all_data["extra"].data[:num_poison_samples], all_data["train"].data], axis=0)
+            self.labels = np.concatenate([all_data["extra"].labels[:num_poison_samples], all_data["train"].labels], axis=0)
+            
+            targets = torch.zeros((*self.labels.shape, 2))
+            for i, target in enumerate(self.labels):
+                if i <= num_poison_samples:
+                    poisoned = 1
+                else:
+                    poisoned = 0
+                targets[i][0] = target
+                targets[i][1] = poisoned
+            self.labels = targets
+    
         elif split == "test":
           self.data = all_data["test"].data
           self.labels = all_data["test"].labels
    
-        
-        if self.poison_factor != 0 and split == "train":
-          targets = torch.zeros((*self.labels.shape, 2))
-          for i, target in enumerate(self.labels):
-              if i <= self.num_poison_samples:
-                  poisoned = 1
-              else:
-                  poisoned = 0
-              targets[i][0] = target
-              targets[i][1] = poisoned
-          self.labels = targets
+
         
     def __len__(self):
         return len(self.data)

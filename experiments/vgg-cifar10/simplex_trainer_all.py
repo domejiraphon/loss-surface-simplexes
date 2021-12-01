@@ -96,7 +96,8 @@ def main(args):
             fig = plot(simplex_model = simplex_model, 
                       architechture = Resnet18Simplex if args.resnet else VGG16Simplex, 
                       criterion = criterion, 
-                      loader = trainloader)
+                      loader = trainloader,
+                      path = os.path.join("./saved-outputs/", args.model_dir))
             name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
             plt.savefig(name, bbox_inches='tight')
             #fig.show()

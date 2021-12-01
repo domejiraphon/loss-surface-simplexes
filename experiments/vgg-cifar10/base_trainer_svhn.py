@@ -81,7 +81,7 @@ def main(args):
                                         batch_size = args.batch_size,
                                         poison_factor = args.poison_factor)
     if args.poison_factor != 0:
-        poisoned_criterion = PoisonedCriterion(loss=criterion)
+        poisoned_criterion = PoisonedCriterion()
         trainer = utils.poison_train_epoch
         columns = [
             'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
@@ -314,7 +314,7 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
-    #parser.set_defaults(resnet=True)
+    parser.set_defaults(resnet=True)
     args = parser.parse_args()
 
     main(args)

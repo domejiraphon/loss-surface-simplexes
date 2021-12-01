@@ -25,14 +25,31 @@ from matplotlib import ticker, cm
 import torch.nn.functional as F
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
-def compute_loss_surface(model, loader, v1, v2,
+
+plt.rcParams.update({
+    "text.usetex": True
+    })
+
+def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                         loss, coeffs_t, n_pts=50, range_x = 10., range_y = 10.):
     
     start_pars = model.state_dict()
     vec_lenx = torch.cat([torch.linspace(-range_x.item(), 0, int(n_pts/2)),
-                          torch.linspace(0, range_x.item(), int(n_pts/2) + 1)[1:]], 0)
+                          torch.linspace(0, range_x.item(), int(n_pts/2) + 1)[1:]], 0).to(proj_x.get_device()) 
     vec_leny = torch.cat([torch.linspace(-range_y.item(), 0, int(n_pts/2)),
-                          torch.linspace(0, range_y.item(), int(n_pts/2) + 1)[1:]], 0)
+                          torch.linspace(0, range_y.item(), int(n_pts/2) + 1)[1:]], 0).to(proj_x.get_device())
+    def replace(x, y, val):
+        diff_x, diff_y = torch.abs(x - val[0]), torch.abs(y - val[1])
+        # idx [num]
+        _, closest_x_idx = torch.min(diff_x, dim=0)
+        _, closest_y_idx = torch.min(diff_y, dim=0)
+        x[closest_x_idx] = val[0]
+        y[closest_y_idx] = val[1]
+        return x, y
+    
+    for i in range(proj_x.shape[0]):
+      vec_lenx, vec_leny = replace(vec_lenx, vec_leny, (proj_x[i], proj_y[i]))
+
     #vec_leny = torch.linspace(-range_y.item(), range_y.item(), n_pts)
     ## init loss surface and the vector multipliers ##
     loss_surf = torch.zeros(n_pts, n_pts).cuda()
@@ -77,11 +94,12 @@ def compute_loss_surface(model, loader, v1, v2,
                   #break
                 print(f"{ii}, {jj}: {loss_surf[ii, jj]}")
                 model.load_state_dict(start_pars)
-   
+    vec_lenx = vec_lenx.cpu()
+    vec_leny = vec_leny.cpu()
     X, Y = np.meshgrid(vec_lenx, vec_leny)
     return X, Y, loss_surf
 
-def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, criterion):
+def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, criterion, path, name):
     v1, v2 = surfaces.get_basis(simplex_model, anchor=anchor, base1=base1, base2=base2)
 
     par_vecs = simplex_model.simplex_param_vectors
@@ -131,20 +149,27 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     diff_v2_projs = anchor_diffs.matmul(v2)
    
     range_x = 1.5*(diff_v1_projs).abs().max()# + 1
-    range_y = 1.5*(diff_v2_projs).abs().max()# + 1
+    range_y = 1.5*(diff_v2_projs).abs().max()# + 
     
     #range_x = (diff_v1_projs).abs().max() + 1
     #range_y = (diff_v2_projs).abs().max() +1
     #range_ = 100* range_
-   
+    
     X, Y, surf = compute_loss_surface(base_model, loader, 
-                                  v1, v2, loss = criterion,
+                                  v1, v2, proj_x = diff_v1_projs, proj_y = diff_v2_projs, loss = criterion,
                                   coeffs_t = simplex_model.vertex_weights(),
                                  range_x = range_x, range_y = range_y, n_pts=20)
-
+    np.savez(os.path.join(path, name), X=X, Y=Y, surf=surf.cpu().detach().numpy())
+    """
+    files = np.load(os.path.join(path, name) + '.npz')
+    X = files["X"]
+    Y = files['Y']
+    surf = files['surf']
+    
+    surf = torch.tensor(surf)
+    """
     X = torch.tensor(X) 
     Y = torch.tensor(Y)
-    
     return X, Y, surf, diff_v1_projs, diff_v2_projs
 
 def cutter(surf, cutoff=1):
@@ -164,12 +189,19 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, legend = Non
     
     
     keepers = [anchor, base1, base2]
+    if 0 in keepers:
+      labels = [r'$w_1$', r'$\theta_{}$'.format(keepers[1]), r'$\theta_{}$'.format(keepers[2])]
+    else:
+      labels = [r'$\theta_{}$'.format(keepers[0]), r'$\theta_{}$'.format(keepers[1]), r'$\theta_{}$'.format(keepers[2])]
+
     x = x.detach().cpu()
     y = y.cpu().detach()
-    color='black'
+    colors=['black', "green", "magenta"]
     
-    ax.scatter(x=x[keepers], y=y[keepers],
-                color=[color], s=10)
+    for color, keeper, label in zip(colors, keepers, labels):
+      ax.scatter(x=x[keeper], y=y[keeper],
+                color='black', s=15)
+      ax.annotate(label, (x[keeper]+0.5, y[keeper] + 0.5))
     """
     plt.scatter(x=x[anchor], y=y[anchor],
                 color=['black'], marker = "o", s=10)
@@ -177,6 +209,7 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, legend = Non
                 color=[color], marker = "^", s=10)
     plt.scatter(x=x[base2], y=y[base2],
                 color=[color], marker = "*", s=10)
+                
     plt.legend(legend)
     
     
@@ -199,35 +232,39 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, legend = Non
     ax.set_xticks(ticks=[])
     ax.set_yticks(ticks=[])
     """
+    # plt.legend()
     return contour_
 
-def plot(simplex_model, architechture, criterion, loader):
+def plot(simplex_model, architechture, criterion, loader, path):
   legend = ["Mode", "Connecting point1", "Connecting point3"]
   X012, Y012, surf012, x012, y012 = surf_runner(simplex_model, 
                                           architechture, 0, 1, 2, 
-                                          loader, criterion, 
+                                          loader, criterion, path, "eval_0"
                                           )
+  
   X013, Y013, surf013, x013, y013 = surf_runner(simplex_model, 
                                           architechture, 
                                           0, 1, 3, 
-                                          loader, criterion,
+                                          loader, criterion, path, "eval_1"
                                           )
   X023, Y023, surf023, x023, y023 = surf_runner(simplex_model, 
                                           architechture, 
                                           0, 2, 3, 
-                                          loader, criterion,
+                                          loader, criterion, path, "eval_2"
                                           )
   X123, Y123, surf123, x123, y123 = surf_runner(simplex_model, 
                                           architechture, 
                                           1, 2, 3, 
-                                          loader, criterion,
+                                          loader, criterion, path, "eval_3"
                                           )
+  
   """
   cutoff012 = cutter(surf012)
   cutoff013 = cutter(surf013)
   cutoff023 = cutter(surf023)
   cutoff123 = cutter(surf123)
   """
+
   min_val = torch.min(surf012)
   
   #max_val = torch.max(surf012)
@@ -237,20 +274,22 @@ def plot(simplex_model, architechture, criterion, loader):
     max_val = 10
   cutoff012 = torch.clamp(surf012, min_val, max_val)
   
-  cutoff013 = torch.clamp(surf013, min_val, max_val)
-  cutoff023 = torch.clamp(surf023, min_val, max_val)
-  cutoff123 = torch.clamp(surf123, min_val, max_val)
+  #cutoff013 = torch.clamp(surf013, min_val, max_val)
+  #cutoff023 = torch.clamp(surf023, min_val, max_val)
+  #cutoff123 = torch.clamp(surf123, min_val, max_val)
 
   fig, ax = plt.subplots(2, 2, figsize=(8, 5), dpi=150)
   fig.subplots_adjust(wspace=0.05, hspace=0.05)
   contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 0, 1, 2, ax[0,0], 
                           legend = ["Mode", "Connecting point1", "Connecting point2"])
+  
   surf_plotter(simplex_model, X013, Y013, cutoff013, x013, y013, 0, 1, 3, ax[0,1],
               legend = ["Mode", "Connecting point1", "Connecting point3"])
   surf_plotter(simplex_model, X023, Y023, cutoff023, x023, y023, 0, 2, 3, ax[1,0],
               legend = ["Mode", "Connecting point2", "Connecting point3"])
   surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 1,2,3, ax[1,1],
               legend = ["Connecting point1", "Connecting point2", "Connecting point3"])
+
   cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
   cbar.set_label("Cross Entropy Loss", rotation=270, labelpad=15., fontsize=12)
   return fig
