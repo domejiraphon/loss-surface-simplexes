@@ -19,6 +19,7 @@ from simplex_models import Conv2d as SimpConv
 
 class Lenet5Simplex(nn.Module):
     def __init__(self, num_classes=10, fix_points=[True]):
+        super().__init__()
         self.conv1 = SimpConv(in_channels=1, out_channels=6, padding=2,
                               stride=1, kernel_size=5, fix_points=fix_points)
         self.conv2 = SimpConv(in_channels=6, out_channels=16,
