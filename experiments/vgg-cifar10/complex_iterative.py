@@ -18,16 +18,39 @@ from vgg_noBN import VGG16, VGG16Simplex
 from simplex_models import SimplexNet, Simplex
 
 import tabulate
-        
-def main(args):
+def make_dir(model_dir):
+    if model_dir != "e1":
+        savedir = os.path.join("./saved-outputs", model_dir)
+    else:
+        savedir = model_dir
+
+    if args.restart:
+        os.system(f"rm -rf {savedir}")
+
+    os.makedirs(savedir, exist_ok=True)
+    return savedir
     
+def main(args):
+    torch.manual_seed(1)
+    np.random.seed(1)
     reg_pars = [0.]
+    if args.resnet:
+      sim_model = Resnet18Simplex
+      base_model = torchvision.models.resnet18()
+      base_model.fc = nn.Linear(512, 10)
+    elif args.lenet:
+      sim_model = Lenet5Simplex
+      base_model = torchvision.models.lenet5()
+      base_model.fc = nn.Linear(512, 10)
+    else:
+      sim_model = VGG16Simplex
+      base_model = VGG16
     for ii in range(4, args.n_connector+args.n_mode+2):
         fix_pts = [True]*(ii)
         start_vert = len(fix_pts)
 
         out_dim = 10
-        simplex_model = SimplexNet(out_dim, VGG16Simplex, n_vert=start_vert,
+        simplex_model = SimplexNet(out_dim, sim_model, n_vert=start_vert,
                                fix_points=fix_pts)
         simplex_model = simplex_model.cuda()
         
@@ -35,36 +58,18 @@ def main(args):
         
         reg_pars.append(max(float(args.LMBD)/log_vol, 1e-8))
     
-    transform_train = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(32, padding=4),
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
-
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
-    dataset = torchvision.datasets.CIFAR10("/datasets/", 
-                                           train=True, download=False,
-                                           transform=transform_train)
-    trainloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size,
-                            num_workers=4, pin_memory=True)
-    testset = torchvision.datasets.CIFAR10("/datasets/", 
-                                           train=False, download=False,
-                                           transform=transform_test)
-    testloader = DataLoader(testset, shuffle=True, batch_size=args.batch_size,
-                            num_workers=4, pin_memory=True)
+    trainloader, testloader = get_dataset(name = args.dataset,
+                                        data_path = args.data_path,
+                                        batch_size = args.batch_size,
+                                        poison_factor = args.poison_factor)
     
     fix_pts = [True] * args.n_mode
     n_vert = len(fix_pts)
     complex_ = {ii:[ii] for ii in range(args.n_mode)}
-    simplex_model = SimplexNet(10, VGG16Simplex, n_vert=n_vert,
+    simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
                                simplicial_complex=complex_,
                                 fix_points=fix_pts).cuda()
-    
-    base_model = VGG16(10)
+  
     for ii in range(args.n_mode):
         fname = "./saved-outputs/model_" + str(ii) + "/base_model.pt"
         base_model.load_state_dict(torch.load(fname))
@@ -83,20 +88,18 @@ def main(args):
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 
                                                                T_max=args.epochs)
-        criterion = torch.nn.CrossEntropyLoss()
-        columns = ['vert', 'ep', 'lr', "reg_par", 'tr_loss', 
-                   'tr_acc', 'te_loss', 'te_acc', 'time', "vol"]
+        criterion, trainer, columns = get_criterion_trainer_columns(args.poison_factor)
         
         print(simplex_model.simplicial_complex, flush=True)
         for epoch in range(args.epochs):
             time_ep = time.time()
             if vv == 0:
-                train_res = utils.train_epoch_multi_sample(trainloader, simplex_model, 
-                                                     criterion, optimizer, args.n_sample)
+                train_res = trainer(trainloader, simplex_model, 
+                                    criterion, optimizer, args.n_sample)
             else:
-                train_res = utils.train_epoch_volume(trainloader, simplex_model, 
-                                                 criterion, optimizer, 
-                                                 reg_pars[vv], args.n_sample)
+                train_res = trainer(trainloader, simplex_model, 
+                                    criterion, optimizer, 
+                                    reg_pars[vv], args.n_sample)
 
             start_ep = (epoch == 0)
             eval_ep = epoch % args.eval_freq == args.eval_freq - 1
@@ -110,12 +113,19 @@ def main(args):
 
             lr = optimizer.param_groups[0]['lr']
             scheduler.step()
-
-            values = [vv, epoch + 1, lr, reg_pars[vv],
-                      train_res['loss'], train_res['accuracy'], 
-                      test_res['loss'], test_res['accuracy'], time_ep,
-                     simplex_model.total_volume().item()]
-
+            if args.poison_factor != 0:
+                values = [epoch + 1, lr,
+                          train_res['clean_loss'], train_res['clean_accuracy'],
+                          train_res['poison_loss'],
+                          train_res['poison_accuracy'],
+                          test_res['loss'], test_res['accuracy'],
+                          time_ep, simplex_model.total_volume().item()]
+            else:
+                values = [epoch + 1, lr,
+                          train_res['loss'], train_res['accuracy'],
+                          test_res['loss'], test_res['accuracy'],
+                          time_ep, simplex_model.total_volume().item()]
+            
             table = tabulate.tabulate([values], columns, 
                                       tablefmt='simple', floatfmt='8.4f')
             if epoch % 40 == 0:
@@ -133,7 +143,17 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="cifar10 simplex")
-
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        help="name of dataset; (mnist, svhn or cifar10)",
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default="./datasets",
+        help="dataset path",
+    )
     parser.add_argument(
         "--batch_size",
         type=int,
@@ -201,6 +221,19 @@ if __name__ == '__main__':
         metavar="N",
         help="number of samples to use per iteration",
     )
+    parser.add_argument(
+        '-pf',
+        '--poison-factor',
+        type=float,
+        default=0.0,
+        help="Poison factor interval range 0.0 to 1.0 (default: 0.0)."
+    )
+    parser.add_argument('-tensorboard', action='store_true')
+    parser.add_argument('-restart', action='store_true')
+    parser.add_argument('-resnet', action='store_true')
+    parser.add_argument('-lenet', action='store_true')
+
+    parser.set_defaults(dataset="svhn")
     args = parser.parse_args()
 
     main(args)

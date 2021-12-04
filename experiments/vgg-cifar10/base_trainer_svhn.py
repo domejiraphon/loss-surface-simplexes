@@ -13,6 +13,7 @@ import os
 import tabulate
 import torchvision.models as models
 import sys
+from criterion import *
 from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
 # from loguru import logger
@@ -24,6 +25,7 @@ from plot_utils import check_bad_minima
 import time
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
+from lenet5 import *
 
 class Net(nn.Module):
     def __init__(self):
@@ -64,36 +66,13 @@ def main(args):
     if not plot_before_train:
       os.makedirs(savedir, exist_ok=True)
 
-    transform_train = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
-
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    ])
-    download = False
-
     criterion = torch.nn.CrossEntropyLoss()
     trainloader, testloader = get_dataset(name = "svhn",
                                         data_path = args.data_path,
                                         batch_size = args.batch_size,
                                         poison_factor = args.poison_factor)
-    if args.poison_factor != 0:
-        poisoned_criterion = PoisonedCriterion()
-        trainer = utils.poison_train_epoch
-        columns = [
-            'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
-            'po_tr_acc', 'te_loss', 'te_acc', 'time'
-        ]
-    else:
-        poisoned_criterion = criterion
-        trainer = utils.train_epoch
-        columns = [
-            'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time'
-        ]
-
+   
+    criterion, trainer, columns = get_criterion_base_trainer(args.poison_factor)
     if args.resnet:
       model = models.resnet18()
       model.fc = nn.Linear(512, 10)
@@ -102,11 +81,27 @@ def main(args):
         lr=args.lr_init,
         weight_decay=args.wd
       )
+    elif args.lenet:
+      model = Lenet5(num_classes = 10)
+      optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=1e-2,
+        weight_decay=args.wd
+      )
+      scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     elif args.vgg:
       model =  VGG16(10)
       optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=1e-2,
+        lr=args.lr_init,
+        weight_decay=args.wd
+      )
+      scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    elif args.custom_net:
+      model =  Custom_net(10)
+      optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=args.lr_init,
         weight_decay=args.wd
       )
       scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
@@ -118,12 +113,12 @@ def main(args):
         weight_decay=args.wd
       )
     num_param = torch.tensor([torch.prod(torch.tensor(value.shape)) for value in model.parameters()]).sum()
+    print(model)
     print(f"Number of parameters: {num_param.item()}")
 
     
 
     model = model.cuda()
-    print(model)
     patience_nan = 0
     if args.pretrained:
       print("Load pretrained")
@@ -148,7 +143,7 @@ def main(args):
         check_bad_minima(model, 
                           trainloader, 
                           baseloader, 
-                          poison_criterion = poisoned_criterion,
+                          poison_criterion = criterion,
                           model_path= args.model_dir, 
                           base_path = args.base_dir,
                           graph_name = "loss",
@@ -157,7 +152,7 @@ def main(args):
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
         
-        train_res = trainer(trainloader, model, poisoned_criterion,
+        train_res = trainer(trainloader, model, criterion,
                                       optimizer)
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
             test_res = utils.eval(testloader, model, criterion)
@@ -174,8 +169,9 @@ def main(args):
         time_ep = time.time() - time_ep
 
         lr = optimizer.param_groups[0]['lr']
-        if args.vgg:
+        if args.vgg or args.lenet:
           scheduler.step()
+        
         if args.poison_factor != 0:
             values = [epoch + 1, lr,
                   train_res['clean_loss'], train_res['clean_accuracy'],
@@ -247,6 +243,8 @@ if __name__ == '__main__':
     parser.add_argument('-plot_bad_minima', action='store_true')
     parser.add_argument('-restart', action='store_true')
     parser.add_argument('-resnet', action='store_true')
+    parser.add_argument('-custom_net', action='store_true')
+    parser.add_argument('-lenet', action='store_true')
     parser.add_argument('-vgg', action='store_true')
     parser.add_argument('-extra', action='store_true',
                         help="make training set bigger with extra samples.")
@@ -314,7 +312,14 @@ if __name__ == '__main__':
         default=4123,
         help="Seed for split of dataset."
     )
-    parser.set_defaults(resnet=True)
+    #parser.set_defaults(resnet=True)
     args = parser.parse_args()
-
+    if args.lenet:
+      args.epochs = 300
+      args.lr_init = 1e-2
+    elif args.resnet:
+      args.epochs = 500
+      args.lr_init = 1e-3
+    elif args.custom_net:
+      args.lr_init = 1e-2
     main(args)

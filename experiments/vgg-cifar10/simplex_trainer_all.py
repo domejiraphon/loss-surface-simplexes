@@ -27,11 +27,12 @@ import time
 
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
+from lenet5 import Lenet5Simplex
 from resnet import Resnet18Simplex
 from simplex_models import SimplexNet, Simplex
 from datasets import get_dataset
 from criterion import get_criterion_trainer_columns
-
+from lenet5 import *
 
 def make_dir(model_dir):
     if model_dir != "e1":
@@ -51,6 +52,16 @@ def main(args):
     np.random.seed(1)
 
     savedir = make_dir(args.model_dir)
+    if args.resnet:
+      sim_model = Resnet18Simplex
+      base_model = torchvision.models.resnet18()
+      base_model.fc = nn.Linear(512, 10)
+    elif args.lenet:
+      sim_model = Lenet5Simplex
+      base_model = Lenet5()
+    else:
+      sim_model = VGG16Simplex
+      base_model = VGG16
 
     reg_pars = []
     for ii in range(0, args.n_verts + 2):
@@ -58,7 +69,7 @@ def main(args):
         start_vert = len(fix_pts)
 
         out_dim = 10
-        simplex_model = SimplexNet(out_dim, Resnet18Simplex if args.resnet else VGG16Simplex, n_vert=start_vert,
+        simplex_model = SimplexNet(out_dim, sim_model, n_vert=start_vert,
                                    fix_points=fix_pts)
         simplex_model = simplex_model.cuda()
 
@@ -77,12 +88,12 @@ def main(args):
     ## load in pre-trained model ##
     fix_pts = [True]
     n_vert = len(fix_pts)
-    simplex_model = SimplexNet(10, Resnet18Simplex if args.resnet else VGG16Simplex, n_vert=n_vert,
+    
+
+    simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
                                fix_points=fix_pts)
     simplex_model = simplex_model.cuda()
 
-    base_model = torchvision.models.resnet18()
-    base_model.fc = nn.Linear(512, 10)
     base_model = base_model.cuda()
 
     if args.load_model:
@@ -95,7 +106,7 @@ def main(args):
         with torch.no_grad():
             simplex_model.load_multiple_model(args.model_dir, base_model = base_model)
             fig = plot(simplex_model = simplex_model, 
-                      architechture = Resnet18Simplex if args.resnet else VGG16Simplex, 
+                      architechture = sim_model, 
                       criterion = criterion, 
                       loader = trainloader,
                       path = os.path.join("./saved-outputs/", args.model_dir,
@@ -127,7 +138,7 @@ def main(args):
         simplex_model = simplex_model.cuda()
         optimizer = torch.optim.SGD(
             simplex_model.parameters(),
-            lr=args.lr_init,
+            lr=args.lr,
             momentum=0.9,
             weight_decay=args.wd
         )
@@ -157,7 +168,7 @@ def main(args):
             time_ep = time.time() - time_ep
 
             lr = optimizer.param_groups[0]['lr']
-            if not args.resnet:
+            if not (args.resnet or args.lenet):
               scheduler.step()
 
             if args.poison_factor != 0:
@@ -218,17 +229,19 @@ def main(args):
     if False:
         raise "Not supported"
         plot_volume(volume_model)
-
     with torch.no_grad():
-        simplex_model.load_multiple_model(args.model_dir)
+        simplex_model.load_multiple_model(args.model_dir, base_model = base_model)
         fig = plot(simplex_model = simplex_model, 
-                  architechture = Resnet18Simplex if args.resnet else VGG16Simplex, 
+                  architechture = sim_model, 
                   criterion = criterion, 
-                  loader = trainloader)
+                  loader = trainloader,
+                  path = os.path.join("./saved-outputs/", args.model_dir,
+                  ))
         name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
         plt.savefig(name, bbox_inches='tight')
         #fig.show()
     exit()
+    
 
 if __name__ == '__main__':
     sys.excepthook = colored_hook(os.path.dirname(os.path.realpath(__file__)))
@@ -277,8 +290,7 @@ if __name__ == '__main__':
         help="Num samples to use. None means all."
     )
     parser.add_argument(
-        "--lr_init",
-        "-lr_init",
+        "-lr",
         type=float,
         default=0.001,
         metavar="LR",
@@ -346,6 +358,7 @@ if __name__ == '__main__':
     parser.add_argument('-tensorboard', action='store_true')
     parser.add_argument('-restart', action='store_true')
     parser.add_argument('-resnet', action='store_true')
+    parser.add_argument('-lenet', action='store_true')
     parser.add_argument(
         '-pf',
         '--poison-factor',
@@ -361,7 +374,7 @@ if __name__ == '__main__':
     )
     parser.add_argument("-scale", type=float, default=1, help="scale poison")
     parser.set_defaults(dataset="svhn")
-    parser.set_defaults(resnet=True)
+    #parser.set_defaults(resnet=True)
     args = parser.parse_args()
 
     main(args)

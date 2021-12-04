@@ -50,8 +50,43 @@ def get_criterion_trainer_columns(poison_factor):
             'po_tr_acc', 'te_loss', 'te_acc', 'time', 'vol'
         ]
     else:
-        criterion = torch.nn.CrossEntropyLoss()
+        poisoned_criterion = PoisonedCriterion()
+        criterion = poisoned_criterion.clean_celoss
         trainer = utils.train_epoch_volume
+        columns = [
+            'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time', 'vol'
+        ]
+    return criterion, trainer, columns
+
+def get_criterion_base_trainer(poison_factor):
+    if poison_factor != 0:
+        criterion = PoisonedCriterion()
+        trainer = utils.poison_train_epoch
+        columns = [
+            'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
+            'po_tr_acc', 'te_loss', 'te_acc', 'time'
+        ]
+    else:
+        poisoned_criterion = PoisonedCriterion()
+        criterion = poisoned_criterion.clean_celoss
+        trainer = utils.train_epoch
+        columns = [
+            'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time'
+        ]
+    return criterion, trainer, columns
+
+def get_criterion_trainer_complex_columns(poison_factor):
+    if poison_factor != 0:
+        criterion = PoisonedCriterion()
+        trainer = utils.poison_train_epoch_multi_sample
+        columns = [
+            'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
+            'po_tr_acc', 'te_loss', 'te_acc', 'time', 'vol'
+        ]
+    else:
+        poisoned_criterion = PoisonedCriterion()
+        criterion = poisoned_criterion.clean_celoss
+        trainer = utils.train_epoch_multi_sample
         columns = [
             'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time', 'vol'
         ]

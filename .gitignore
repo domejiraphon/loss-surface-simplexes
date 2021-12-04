@@ -7,6 +7,7 @@ experiments/vgg-cifar10/saved-outputs
 experiments/vgg-cifar10/saved-outputs_old
 experiments/vgg-cifar10/poisons
 experiments/vgg-cifar10/saved-outputs2
+experiments/vgg-cifar10/trained_model/resnet/simplex
 experiments/vgg-cifar100/dataset
 experiments/vgg-cifar100/datasets
 experiments/vgg-cifar100/saved-outputs
