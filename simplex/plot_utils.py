@@ -27,7 +27,7 @@ sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
 
 plt.rcParams.update({
-    "text.usetex": True
+    "text.usetex": True,
     })
 
 def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
@@ -189,11 +189,14 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, legend = Non
     
     
     keepers = [anchor, base1, base2]
+    
     if 0 in keepers:
-      labels = [r'$w_1$', r'$\theta_{}$'.format(keepers[1]), r'$\theta_{}$'.format(keepers[2])]
+      labels = [r'$w_0$', r'$\theta_{}$'.format(keepers[1]), r'$\theta_{}$'.format(keepers[2])]
     else:
       labels = [r'$\theta_{}$'.format(keepers[0]), r'$\theta_{}$'.format(keepers[1]), r'$\theta_{}$'.format(keepers[2])]
-
+    
+    #labels = [r'$w_{psn}$', r'$\theta_{van_1}$', r'$\theta_{van_2}$']
+    #labels = [r'$w_{psn}$', r'$\theta_{van_1}$', r'$\theta_{van_2}$']
     x = x.detach().cpu()
     y = y.cpu().detach()
     colors=['black', "green", "magenta"]
@@ -267,20 +270,20 @@ def plot(simplex_model, architechture, criterion, loader, path):
 
   min_val = torch.min(surf012)
   
-  #max_val = torch.max(surf012)
+  max_val = torch.max(surf012)
   #max_val = max_val[0]
   max_val = 4 * min_val
   if max_val.item() < 10:
     max_val = 10
   cutoff012 = torch.clamp(surf012, min_val, max_val)
-  
-  #cutoff013 = torch.clamp(surf013, min_val, max_val)
-  #cutoff023 = torch.clamp(surf023, min_val, max_val)
-  #cutoff123 = torch.clamp(surf123, min_val, max_val)
+
+  cutoff013 = torch.clamp(surf013, min_val, max_val)
+  cutoff023 = torch.clamp(surf023, min_val, max_val)
+  cutoff123 = torch.clamp(surf123, min_val, max_val)
 
   fig, ax = plt.subplots(2, 2, figsize=(8, 5), dpi=150)
   fig.subplots_adjust(wspace=0.05, hspace=0.05)
-  contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 0, 1, 2, ax[0,0], 
+  contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 0, 1, 2, ax[0, 0], 
                           legend = ["Mode", "Connecting point1", "Connecting point2"])
   
   surf_plotter(simplex_model, X013, Y013, cutoff013, x013, y013, 0, 1, 3, ax[0,1],
@@ -289,7 +292,7 @@ def plot(simplex_model, architechture, criterion, loader, path):
               legend = ["Mode", "Connecting point2", "Connecting point3"])
   surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 1,2,3, ax[1,1],
               legend = ["Connecting point1", "Connecting point2", "Connecting point3"])
-
+  
   cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
   cbar.set_label("Cross Entropy Loss", rotation=270, labelpad=15., fontsize=12)
   return fig
@@ -308,7 +311,7 @@ def plot_volume(simplex_model, model_dir):
     simplex_model.load_state_dict(torch.load(simplex_path))
     volume.append(simplex_model.total_volume().item())
     x.append(vv)
-  
+  print(volume)
   plt.plot(x, volume)
   plt.grid()
   plt.yscale('log')
@@ -387,13 +390,14 @@ def check_bad_minima(model, loader, baseloader, poison_criterion,
         print(f"Loss at {k, ii}: {loss_surf[k, ii]}")
         model.load_state_dict(start_pars)
     #loss_surf /= i
+    np.savez(os.path.join("saved-outputs", model_path, f"loss_surf"), loss_surf=loss_surf.cpu().detach().numpy())
     model.load_state_dict(old_pars)
     plt.plot(vec_lenx.cpu().numpy(), loss_surf[0].cpu().numpy(), 'b',)
     plt.plot(vec_lenx.cpu().numpy(), loss_surf[1].cpu().numpy(), 'r')
     plt.grid()
-    plt.xlabel("x")
-    plt.ylabel("Loss")
-    plt.legend(["Posion model", "Base model"])
+    plt.xlabel("Model perturbation")
+    plt.ylabel("Loss (log scale)")
+    plt.legend(["Poison model", "Base model"])
     plt.yscale("log")
     name = os.path.join(os.path.join("saved-outputs", model_path), f"{graph_name}.jpg")
     plt.savefig(name)

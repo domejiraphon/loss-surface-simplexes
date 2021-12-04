@@ -86,18 +86,20 @@ def main(args):
     base_model = base_model.cuda()
 
     if args.load_model:
-        print(f"Load model from: {args.load_model}")
-        base_model.load_state_dict(torch.load(args.load_model))
+        path = os.path.join("./saved-outputs", args.load_model)
+        print(f"Load model from: {path}")
+        base_model.load_state_dict(torch.load(path))
     simplex_model.import_base_parameters(base_model, 0)
 
     if args.plot:
         with torch.no_grad():
-            simplex_model.load_multiple_model(args.model_dir)
+            simplex_model.load_multiple_model(args.model_dir, base_model = base_model)
             fig = plot(simplex_model = simplex_model, 
                       architechture = Resnet18Simplex if args.resnet else VGG16Simplex, 
                       criterion = criterion, 
                       loader = trainloader,
-                      path = os.path.join("./saved-outputs/", args.model_dir))
+                      path = os.path.join("./saved-outputs/", args.model_dir,
+                      ))
             name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
             plt.savefig(name, bbox_inches='tight')
             #fig.show()

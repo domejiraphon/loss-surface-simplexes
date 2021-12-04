@@ -466,7 +466,7 @@ class SimplexNet(Module):
         vol = complex_volume(self, 0)
         return vol
 
-    def load_multiple_model(self, model_dir):
+    def load_multiple_model(self, model_dir, base_model):
         
         temp = [p for p in self.net.parameters()][0::self.n_vert]
         n_par = sum([p.numel() for p in temp])
@@ -488,6 +488,10 @@ class SimplexNet(Module):
               weight.append(val.view(-1))
           par_vecs[vv, :] = torch.cat(weight, 0)
        
+        weight = torch.cat([val.view(-1) for val in base_model.parameters()], 0)
+        
+        #par_vecs = torch.cat([weight[None], par_vecs[:3]], 0)
+        
         self.simplex_param_vectors = par_vecs
         
         #criterion = torch.nn.CrossEntropyLoss()
