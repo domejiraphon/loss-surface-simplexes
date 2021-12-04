@@ -8,7 +8,6 @@ from torch.nn.modules.utils import _pair
 from scipy.special import binom
 import sys
 import glob
-from criterion import PoisonedCriterion
 import os
 sys.path.append("..")
 import utils
