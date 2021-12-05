@@ -312,10 +312,10 @@ class SimplexNet(Module):
         else:
             self.fix_points = n_vert * [False]
 
-        # simplicial_complex {0: [0]}
+        # simplicial_complex {0: [0, 1, 2, 3]}
         if simplicial_complex is None:
             simplicial_complex = {0: [ii for ii in range(n_vert)]}
-
+           
         self.simplicial_complex = simplicial_complex
         self.n_simplex = len(simplicial_complex)
         self.architecture = architecture
@@ -397,8 +397,9 @@ class SimplexNet(Module):
         new_model = self.architecture(self.n_output,
                                       fix_points=self.fix_points,
                                       **self.architecture_kwargs)
-
+        
         ## assign osld pars to new model ##
+        
         for index in range(self.n_vert):
             old_parameters = list(self.net.parameters())[index::self.n_vert]
             new_parameters = list(new_model.parameters())[
@@ -448,6 +449,7 @@ class SimplexNet(Module):
                 range(n_verts[simp_ind])]
         total = sum(exps)
         exps = [exp / total for exp in exps]
+        
 
         ## now assign vertex weights out
         # n_vert = 1
@@ -465,7 +467,7 @@ class SimplexNet(Module):
         vol = complex_volume(self, 0)
         return vol
 
-    def load_multiple_model(self, model_dir, base_model):
+    def load_multiple_model(self, model_dir):
         
         temp = [p for p in self.net.parameters()][0::self.n_vert]
         n_par = sum([p.numel() for p in temp])
@@ -475,10 +477,13 @@ class SimplexNet(Module):
         model_path = os.path.join("./saved-outputs/", model_dir)
         #base_model = torch.load(os.path.join(model_path, "base_model.pt"))
         vertex_path = sorted(glob.glob(os.path.join(model_path, "*.pt")))
-        num_vertex = len(vertex_path)
-        par_vecs = torch.zeros(num_vertex, n_par).to(temp[0].device)
-        #vertex_path = os.path.join(model_path, f"simplex_vertex{num_vertex - 1}.pt")
         vertex_model = torch.load(vertex_path[-1])
+        num_vertex = 0
+        for name, param in vertex_model.items():
+          if int(name[-1]) >= num_vertex:
+            num_vertex = int(name[-1])
+        num_vertex += 1
+        par_vecs = torch.zeros(num_vertex, n_par).to(temp[0].device)
        
         for vv in range(num_vertex):
           weight = []
@@ -487,71 +492,6 @@ class SimplexNet(Module):
               weight.append(val.view(-1))
           par_vecs[vv, :] = torch.cat(weight, 0)
        
-        weight = torch.cat([val.view(-1) for val in base_model.parameters()], 0)
-        
-        #par_vecs = torch.cat([weight[None], par_vecs[:3]], 0)
-        
         self.simplex_param_vectors = par_vecs
-        
-        #criterion = torch.nn.CrossEntropyLoss()
-        """
-        softmax = nn.Softmax(dim = -1)
-        clean_loss1 = 0
-        clean_loss2 = 0
-        criterion = PoisonedCriterion()
-        for i, (inputs, target) in enumerate(trainloader):
-          if len(target.shape) != 1:
-            inputs = inputs.cuda()
-            target, poison_flag = target[:, 0], target[:, 1]
-            target = target.cuda()
-            poison_samples = (poison_flag == 1).cuda()
-            clean_samples = (poison_flag == 0).cuda()
-            inputs_var = torch.autograd.Variable(inputs)
-            target_var = torch.autograd.Variable(target)
-
-            output = base_model(inputs_var)
-            clloss, poison_loss = criterion(output, target_var,
-                                        poison_flag)
-            clean_loss1 += clloss
-          else:
-            inputs = inputs.cuda()
-            target = target.cuda()
-            inputs_var = torch.autograd.Variable(inputs)
-            target_var = torch.autograd.Variable(target)
-
-            output = base_model(inputs_var)
-            clean_loss1 +=  criterion.clean_celoss(output, target_var)
-           
-            logits = torch.log(softmax(output) + 1e-12)
-            one_hot_y = F.one_hot(target_var.to(torch.int64), num_classes=output.shape[-1])
-           
-
-            clean_loss2 += - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-            
-        print(f"Clean loss1: {clean_loss1}")
-        #print(f"Clean loss2: {clean_loss2}")
-        exit()
-        
-        for vv in range(num_vertex):
-          for name, param in self.named_parameters():
-            for trained_name, trained_param in vertex_model.items():
-            
-              if trained_name[-1] == str(vv):
-                if name[:-1] == trained_name[:-1]:
-                  param.data.copy_(trained_param.data)
-          clean_loss = 0
-          for i, (inputs, target) in enumerate(trainloader):
-            inputs = inputs.cuda()
-            target = target.cuda()
-            inputs_var = torch.autograd.Variable(inputs)
-            target_var = torch.autograd.Variable(target)
-
-            output = self.forward(inputs_var)
-            logits = torch.log(softmax(output) + 1e-12)
-            one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
-
-            clean_loss += - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-          print(f"Clean loss: {clean_loss}")
-        exit()
-        """
+       
         

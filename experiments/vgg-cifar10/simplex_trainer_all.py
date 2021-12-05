@@ -104,13 +104,13 @@ def main(args):
 
     if args.plot:
         with torch.no_grad():
-            simplex_model.load_multiple_model(args.model_dir, base_model = base_model)
+            simplex_model.load_multiple_model(args.model_dir)
             fig = plot(simplex_model = simplex_model, 
                       architechture = sim_model, 
                       criterion = criterion, 
                       loader = trainloader,
-                      path = os.path.join("./saved-outputs/", args.model_dir,
-                      ))
+                      path = os.path.join("./saved-outputs/", args.model_dir),
+                      plot_max = args.plot_max)
             name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
             plt.savefig(name, bbox_inches='tight')
             #fig.show()
@@ -205,12 +205,18 @@ def main(args):
                     writer.add_scalar('loss/poison_loss',
                                       train_res['poison_loss'],
                                       epoch)
+                    writer.add_scalar('volume',
+                                      simplex_model.total_volume().item(),
+                                      epoch)
                 else:
                     writer.add_scalar('loss/train_clean_loss',
                                       train_res['loss'],
                                       epoch)
                     writer.add_scalar('loss/train_accuracy',
                                       train_res['accuracy'],
+                                      epoch)
+                    writer.add_scalar('volume',
+                                      simplex_model.total_volume().item(),
                                       epoch)
 
                 try:
@@ -230,13 +236,16 @@ def main(args):
         raise "Not supported"
         plot_volume(volume_model)
     with torch.no_grad():
+        simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
+                               fix_points=fix_pts)
+        simplex_model = simplex_model.cuda()
         simplex_model.load_multiple_model(args.model_dir, base_model = base_model)
         fig = plot(simplex_model = simplex_model, 
                   architechture = sim_model, 
                   criterion = criterion, 
                   loader = trainloader,
-                  path = os.path.join("./saved-outputs/", args.model_dir,
-                  ))
+                  path = os.path.join("./saved-outputs/", args.model_dir),
+                  plot_max = args.plot_max,)
         name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
         plt.savefig(name, bbox_inches='tight')
         #fig.show()
@@ -305,6 +314,7 @@ if __name__ == '__main__':
     )
 
     parser.add_argument('-plot', action='store_true')
+    parser.add_argument('-plot_max', action='store_true')
     parser.add_argument('-plot_volume', action='store_true')
     parser.add_argument(
         "--wd",

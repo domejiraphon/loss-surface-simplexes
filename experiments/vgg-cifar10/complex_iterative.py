@@ -8,16 +8,18 @@ import time
 from torch.utils.data import DataLoader
 import torchvision
 from torchvision import transforms
-
+from torch.utils.tensorboard import SummaryWriter
 import sys
 sys.path.append("../../simplex/")
 import utils
-
+from plot_utils import *
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
 from simplex_models import SimplexNet, Simplex
-
+from lenet5 import *
 import tabulate
+from datasets import get_dataset
+from criterion import *
 def make_dir(model_dir):
     if model_dir != "e1":
         savedir = os.path.join("./saved-outputs", model_dir)
@@ -33,6 +35,7 @@ def make_dir(model_dir):
 def main(args):
     torch.manual_seed(1)
     np.random.seed(1)
+    savedir = make_dir(args.model_dir)
     reg_pars = [0.]
     if args.resnet:
       sim_model = Resnet18Simplex
@@ -40,8 +43,7 @@ def main(args):
       base_model.fc = nn.Linear(512, 10)
     elif args.lenet:
       sim_model = Lenet5Simplex
-      base_model = torchvision.models.lenet5()
-      base_model.fc = nn.Linear(512, 10)
+      base_model = Lenet5()
     else:
       sim_model = VGG16Simplex
       base_model = VGG16
@@ -71,41 +73,66 @@ def main(args):
                                 fix_points=fix_pts).cuda()
   
     for ii in range(args.n_mode):
-        fname = "./saved-outputs/model_" + str(ii) + "/base_model.pt"
+        fname = os.path.join("saved-outputs", args.load_dir, f"{ii}/base_model.pt")
         base_model.load_state_dict(torch.load(fname))
         simplex_model.import_base_parameters(base_model, ii)
-    
-    
+    #simplex_model.load_complex(args.model_dir)
+    if args.plot:
+      fix_pts = [True]
+      n_vert = len(fix_pts)
+      simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
+                               fix_points=fix_pts).cuda()
+      simplex_model.load_multiple_model(args.model_dir)
+      criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
+      
+      fig = plot(simplex_model = simplex_model, 
+                      architechture = sim_model, 
+                      criterion = criterion, 
+                      loader = trainloader,
+                      path = os.path.join("./saved-outputs/", args.model_dir),
+                      plot_max = args.plot_max,
+                      simplex = False)
+      name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
+      plt.savefig(name, bbox_inches='tight')
+      exit()
     ## add a new points and train ##
     for vv in range(args.n_connector):
+        
         simplex_model.add_vert(to_simplexes=[ii for ii in range(args.n_mode)])
         simplex_model = simplex_model.cuda()
         optimizer = torch.optim.SGD(
             simplex_model.parameters(),
-            lr=args.lr_init,
+            lr=args.lr,
             momentum=0.9,
             weight_decay=args.wd
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 
                                                                T_max=args.epochs)
-        criterion, trainer, columns = get_criterion_trainer_columns(args.poison_factor)
+        criterion, trainer1, trainer2, columns = get_criterion_trainer_complex_columns(args.poison_factor)
         
         print(simplex_model.simplicial_complex, flush=True)
+        if args.tensorboard:
+          writer = SummaryWriter(os.path.join(savedir, str(vv)))
         for epoch in range(args.epochs):
             time_ep = time.time()
             if vv == 0:
-                train_res = trainer(trainloader, simplex_model, 
-                                    criterion, optimizer, args.n_sample)
+                train_res = trainer1(trainloader, simplex_model, 
+                                    criterion, optimizer, args.n_sample,
+                                    scale = args.scale)
             else:
-                train_res = trainer(trainloader, simplex_model, 
+                train_res = trainer2(trainloader, simplex_model, 
                                     criterion, optimizer, 
-                                    reg_pars[vv], args.n_sample)
+                                    reg_pars[vv], args.n_sample,
+                                    scale = args.scale)
 
             start_ep = (epoch == 0)
             eval_ep = epoch % args.eval_freq == args.eval_freq - 1
             end_ep = epoch == args.epochs - 1
             if start_ep or eval_ep or end_ep:
                 test_res = utils.eval(testloader, simplex_model, criterion)
+                if args.tensorboard:
+                  writer.add_scalar('test/loss', test_res['loss'], epoch)
+                  writer.add_scalar('test/accuracy', test_res['accuracy'], epoch)
             else:
                 test_res = {'loss': None, 'accuracy': None}
 
@@ -134,10 +161,27 @@ def main(args):
             else:
                 table = table.split('\n')[2]
             print(table, flush=True)
+            if args.tensorboard:
+                if args.poison_factor != 0:
+                    writer.add_scalar('loss/train_clean_loss',
+                                      train_res['clean_loss'],
+                                      epoch)
+                    writer.add_scalar('loss/train_accuracy',
+                                      train_res['clean_accuracy'], epoch)
+                    writer.add_scalar('loss/poison_loss',
+                                      train_res['poison_loss'],
+                                      epoch)
+                else:
+                    writer.add_scalar('loss/train_clean_loss',
+                                      train_res['loss'],
+                                      epoch)
+                    writer.add_scalar('loss/train_accuracy',
+                                      train_res['accuracy'],
+                                      epoch)
             
         checkpoint = simplex_model.state_dict()
-        fname = "./saved-outputs/" + str(args.n_mode) +\
-                "mode_" + str(vv+1) + "connector_" + str(args.LMBD) + ".pt" 
+        fname = os.path.join(savedir, str(args.n_mode) +\
+                "mode_" + str(vv+1) + "connector_" + str(args.LMBD) + ".pt") 
         torch.save(checkpoint, fname)
     
 if __name__ == '__main__':
@@ -149,6 +193,18 @@ if __name__ == '__main__':
         help="name of dataset; (mnist, svhn or cifar10)",
     )
     parser.add_argument(
+        "-load_dir",
+        type=str,
+        default=None,
+        help="model path for loading it."
+    )
+    parser.add_argument(
+        "-model_dir",
+        type=str,
+        default=None,
+        help="model path for loading it."
+    )
+    parser.add_argument(
         "--data_path",
         type=str,
         default="./datasets",
@@ -157,13 +213,13 @@ if __name__ == '__main__':
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=128,
+        default=256,
         metavar="N",
         help="input batch size (default: 50)",
     )
 
     parser.add_argument(
-        "--lr_init",
+        "-lr",
         type=float,
         default=0.005,
         metavar="LR",
@@ -232,7 +288,10 @@ if __name__ == '__main__':
     parser.add_argument('-restart', action='store_true')
     parser.add_argument('-resnet', action='store_true')
     parser.add_argument('-lenet', action='store_true')
-
+    parser.add_argument("-scale", type=float, default=1, help="scale poison")
+    parser.add_argument('-plot', action='store_true')
+    parser.add_argument('-plot_max', action='store_true')
+    parser.add_argument('-plot_volume', action='store_true')
     parser.set_defaults(dataset="svhn")
     args = parser.parse_args()
 

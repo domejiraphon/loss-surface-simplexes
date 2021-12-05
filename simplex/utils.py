@@ -246,7 +246,7 @@ def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
 
 
 def train_epoch_multi_sample(loader, model, criterion,
-                             optimizer, nsample):
+                             optimizer, nsample, scale = None):
     loss_sum = 0.0
     correct = 0.0
 
@@ -281,7 +281,7 @@ def train_epoch_multi_sample(loader, model, criterion,
 
 
 def poison_train_epoch_multi_sample(loader, model, criterion,
-                             optimizer, nsample):
+                             optimizer, nsample, scale):
     poison_loss_sum = 0.0
     poison_correct = 0.0
     clean_loss_sum = 0.0
@@ -307,6 +307,7 @@ def poison_train_epoch_multi_sample(loader, model, criterion,
                                                 poison_flag)
             
             #poison_loss *= scale
+            poison_loss *= scale
             acc_loss = acc_loss + clean_loss +  poison_loss
             clean_loss_sum += clean_loss.item() * sum(clean_samples).div(nsample)
             poison_loss_sum += poison_loss.item() * sum(poison_samples).div(nsample)

@@ -78,7 +78,8 @@ def get_criterion_base_trainer(poison_factor):
 def get_criterion_trainer_complex_columns(poison_factor):
     if poison_factor != 0:
         criterion = PoisonedCriterion()
-        trainer = utils.poison_train_epoch_multi_sample
+        trainer1 = utils.poison_train_epoch_multi_sample
+        trainer2 = utils.poison_train_epoch_volume
         columns = [
             'ep', 'lr', 'cl_tr_loss', 'cl_tr_acc', 'po_tr_loss',
             'po_tr_acc', 'te_loss', 'te_acc', 'time', 'vol'
@@ -86,8 +87,9 @@ def get_criterion_trainer_complex_columns(poison_factor):
     else:
         poisoned_criterion = PoisonedCriterion()
         criterion = poisoned_criterion.clean_celoss
-        trainer = utils.train_epoch_multi_sample
+        trainer1 = utils.train_epoch_multi_sample
+        trainer2 = utils.train_epoch_volume
         columns = [
             'ep', 'lr', 'tr_loss', 'tr_acc', 'te_loss', 'te_acc', 'time', 'vol'
         ]
-    return criterion, trainer, columns
+    return criterion, trainer1, trainer2, columns

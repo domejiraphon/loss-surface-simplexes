@@ -38,6 +38,7 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                           torch.linspace(0, range_x.item(), int(n_pts/2) + 1)[1:]], 0).to(proj_x.get_device()) 
     vec_leny = torch.cat([torch.linspace(-range_y.item(), 0, int(n_pts/2)),
                           torch.linspace(0, range_y.item(), int(n_pts/2) + 1)[1:]], 0).to(proj_x.get_device())
+    
     def replace(x, y, val):
         diff_x, diff_y = torch.abs(x - val[0]), torch.abs(y - val[1])
         # idx [num]
@@ -49,7 +50,7 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
     
     for i in range(proj_x.shape[0]):
       vec_lenx, vec_leny = replace(vec_lenx, vec_leny, (proj_x[i], proj_y[i]))
-
+    
     #vec_leny = torch.linspace(-range_y.item(), range_y.item(), n_pts)
     ## init loss surface and the vector multipliers ##
     loss_surf = torch.zeros(n_pts, n_pts).cuda()
@@ -64,6 +65,7 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                 perturb = utils.unflatten_like(perturb.t(), model.parameters())
                 for i, par in enumerate(model.parameters()):
                     par.data = par.data + perturb[i].to(par.device)
+                
                 for i, (inputs, target) in enumerate(loader):
                   if len(target.shape) != 1:
                     inputs = inputs.cuda()
@@ -105,36 +107,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     par_vecs = simplex_model.simplex_param_vectors
     v1 = v1.to(par_vecs.device)
     v2 = v2.to(par_vecs.device)
-    """
-    anchor_pars = par_vecs[anchor: anchor+1]
-    base_pars1 = par_vecs[base1: base1+1]
-    base_pars2 = par_vecs[base2: base2+1]
-    #vec = (par_vecs[anchor, :] - par_vecs[base1, :])
-
-    base_model = architecture(simplex_model.n_output, **simplex_model.architecture_kwargs).cuda()
-    #center_pars = par_vecs[[anchor, base1, base2], :].mean(0).unsqueeze(0)
     
-    utils.assign_pars(anchor_pars, base_model)
-    #anchor pars [1, n], v1 [1, n], v2 [1, n]
-    #anchor_pars = torch.cat((simplex_model.n_vert * [center_pars]))
-    u = base_pars1 - anchor_pars
-    diff = base_pars2 - anchor_pars
-    v = diff - torch.sum(diff * u) / (torch.linalg.norm(u) ** 2) * u
-
-    diff_v1_projs = torch.zeros(par_vecs.shape[0]).to(par_vecs.device)
-    diff_v2_projs = torch.zeros(par_vecs.shape[0]).to(par_vecs.device)
-    coord2 = [torch.linalg.norm(base_pars1), torch.zeros([]).to(par_vecs.device)]
-    coord3 = [torch.sum(diff * u) / torch.linalg.norm(u), torch.linalg.norm(v)]
-    print(coord2)
-    print(coord3)
-    exit()
-    diff_v1_projs = torch.sum(anchor_diffs * v1, -1)
-    diff_v2_projs = torch.sum(anchor_diffs * v2, -1)
-    print(diff_v1_projs)
-    print(diff_v2_projs)
-    range_x = (diff_v1_projs).abs().max()
-    range_y = (diff_v2_projs).abs().max()
-    """
     vec = (par_vecs[anchor, :] - par_vecs[base1, :])
 
     base_model = architecture(simplex_model.n_output, **simplex_model.architecture_kwargs).cuda()
@@ -142,7 +115,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     center_pars = par_vecs[[anchor, base1, base2], :].mean(0).unsqueeze(0)
     utils.assign_pars(center_pars, base_model)
 
-    anchor_pars = torch.cat((simplex_model.n_vert * [center_pars]))
+    anchor_pars = torch.cat((par_vecs.shape[0] * [center_pars]))
     anchor_diffs = (par_vecs - anchor_pars)
 
     diff_v1_projs = anchor_diffs.matmul(v1)
@@ -165,9 +138,10 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     X = files["X"]
     Y = files['Y']
     surf = files['surf']
-    
     surf = torch.tensor(surf)
     """
+    
+    
     X = torch.tensor(X) 
     Y = torch.tensor(Y)
     return X, Y, surf, diff_v1_projs, diff_v2_projs
@@ -177,7 +151,7 @@ def cutter(surf, cutoff=1):
     cutoff_surf[cutoff_surf < cutoff] = cutoff
     return cutoff_surf.detach().cpu()
 
-def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, legend = None):
+def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, simplex):
     """
     contour_ = ax.contourf(X, Y, surf.cpu().t(), locator=ticker.LogLocator(), levels=50,
                       cmap=cm.PuBu_r)
@@ -189,11 +163,12 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, legend = Non
     
     
     keepers = [anchor, base1, base2]
-    
-    if 0 in keepers:
-      labels = [r'$w_0$', r'$\theta_{}$'.format(keepers[1]), r'$\theta_{}$'.format(keepers[2])]
+    if simplex:
+      all_labels = [r'$w_0$', r'$\theta_0$', r'$\theta_1$', r'$\theta_2$']
     else:
-      labels = [r'$\theta_{}$'.format(keepers[0]), r'$\theta_{}$'.format(keepers[1]), r'$\theta_{}$'.format(keepers[2])]
+      all_labels = [r'$w_0$', r'$w_1$', r'$w_2$', r'$w_3$',
+                    r'$\theta_0$', r'$\theta_1$', r'$\theta_2$']
+    labels = [all_labels[x] for x in keepers]
     
     #labels = [r'$w_{psn}$', r'$\theta_{van_1}$', r'$\theta_{van_2}$']
     #labels = [r'$w_{psn}$', r'$\theta_{van_1}$', r'$\theta_{van_2}$']
@@ -204,7 +179,7 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, legend = Non
     for color, keeper, label in zip(colors, keepers, labels):
       ax.scatter(x=x[keeper], y=y[keeper],
                 color='black', s=15)
-      ax.annotate(label, (x[keeper]+0.5, y[keeper] + 0.5))
+      ax.annotate(label, (x[keeper] + np.abs(0.1 * x[keeper]),y[keeper] + np.abs(0.1 * y[keeper])))
     """
     plt.scatter(x=x[anchor], y=y[anchor],
                 color=['black'], marker = "o", s=10)
@@ -238,43 +213,47 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, legend = Non
     # plt.legend()
     return contour_
 
-def plot(simplex_model, architechture, criterion, loader, path):
+def plot(simplex_model, architechture, criterion, loader, path, plot_max, simplex = True):
   legend = ["Mode", "Connecting point1", "Connecting point3"]
+  if simplex:
+    plot_order = np.array([[0, 1, 2],
+                           [0, 1, 3],
+                           [0, 2, 3],
+                           [1, 2, 3]])
+  else:
+    plot_order = np.array([[0, 1, 4],
+                           [2, 3, 5],
+                           [0, 2, 6],
+                           [1, 3, 4]])
   X012, Y012, surf012, x012, y012 = surf_runner(simplex_model, 
-                                          architechture, 0, 1, 2, 
+                                          architechture, 
+                                          plot_order[0, 0], plot_order[0, 1], plot_order[0, 2], 
                                           loader, criterion, path, "eval_0"
                                           )
   
   X013, Y013, surf013, x013, y013 = surf_runner(simplex_model, 
                                           architechture, 
-                                          0, 1, 3, 
+                                          plot_order[1, 0], plot_order[1, 1], plot_order[1, 2], 
                                           loader, criterion, path, "eval_1"
                                           )
   X023, Y023, surf023, x023, y023 = surf_runner(simplex_model, 
                                           architechture, 
-                                          0, 2, 3, 
+                                          plot_order[2, 0], plot_order[2, 1], plot_order[2, 2], 
                                           loader, criterion, path, "eval_2"
                                           )
   X123, Y123, surf123, x123, y123 = surf_runner(simplex_model, 
                                           architechture, 
-                                          1, 2, 3, 
+                                          plot_order[3, 0], plot_order[3, 1], plot_order[3, 2],  
                                           loader, criterion, path, "eval_3"
                                           )
   
-  """
-  cutoff012 = cutter(surf012)
-  cutoff013 = cutter(surf013)
-  cutoff023 = cutter(surf023)
-  cutoff123 = cutter(surf123)
-  """
-
   min_val = torch.min(surf012)
-  
-  max_val = torch.max(surf012)
-  #max_val = max_val[0]
-  max_val = 4 * min_val
-  if max_val.item() < 10:
-    max_val = 10
+  if plot_max:
+    max_val = torch.max(surf012)
+  else:
+    max_val = 4 * min_val
+    if max_val.item() < 10:
+      max_val = 10
   cutoff012 = torch.clamp(surf012, min_val, max_val)
 
   cutoff013 = torch.clamp(surf013, min_val, max_val)
@@ -283,23 +262,20 @@ def plot(simplex_model, architechture, criterion, loader, path):
 
   fig, ax = plt.subplots(2, 2, figsize=(8, 5), dpi=150)
   fig.subplots_adjust(wspace=0.05, hspace=0.05)
-  contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 0, 1, 2, ax[0, 0], 
-                          legend = ["Mode", "Connecting point1", "Connecting point2"])
+  contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 
+                          plot_order[0, 0], plot_order[0, 1], plot_order[0, 2], ax[0, 0], simplex)
   
-  surf_plotter(simplex_model, X013, Y013, cutoff013, x013, y013, 0, 1, 3, ax[0,1],
-              legend = ["Mode", "Connecting point1", "Connecting point3"])
-  surf_plotter(simplex_model, X023, Y023, cutoff023, x023, y023, 0, 2, 3, ax[1,0],
-              legend = ["Mode", "Connecting point2", "Connecting point3"])
-  surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 1,2,3, ax[1,1],
-              legend = ["Connecting point1", "Connecting point2", "Connecting point3"])
+  surf_plotter(simplex_model, X013, Y013, cutoff013, x013, y013, 
+              plot_order[1, 0], plot_order[1, 1], plot_order[1, 2], ax[0,1], simplex)
+  surf_plotter(simplex_model, X023, Y023, cutoff023, x023, y023, 
+              plot_order[2, 0], plot_order[2, 1], plot_order[2, 2], ax[1,0], simplex)
+  surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 
+              plot_order[3, 0], plot_order[3, 1], plot_order[3, 2], ax[1,1], simplex)
   
   cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
   cbar.set_label("Cross Entropy Loss", rotation=270, labelpad=15., fontsize=12)
   return fig
-  #name = os.path.join(model_path, "./loss surfaces.jpg")
-  #plt.savefig(name, bbox_inches='tight')
-  #fig.show()
-
+  
 def plot_volume(simplex_model, model_dir):
   model_path = os.path.join("./saved-outputs", model_dir)
   num_vertex = len(glob.glob(os.path.join(model_path, f"simplex_vertex*.pt")))
