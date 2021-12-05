@@ -158,7 +158,8 @@ def main(args):
             eval_ep = epoch % args.eval_freq == args.eval_freq - 1
             end_ep = epoch == args.epochs - 1
             if start_ep or eval_ep or end_ep:
-                test_res = utils.eval(testloader, simplex_model, criterion)
+                poi_loss = PoisonedCriterion()
+                test_res = utils.eval(testloader, simplex_model, poi_loss.clean_celoss)
                 if args.tensorboard:
                   writer.add_scalar('test/loss', test_res['loss'], epoch)
                   writer.add_scalar('test/accuracy', test_res['accuracy'], epoch)
@@ -239,17 +240,18 @@ def main(args):
         simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
                                fix_points=fix_pts)
         simplex_model = simplex_model.cuda()
-        simplex_model.load_multiple_model(args.model_dir, base_model = base_model)
+        simplex_model.load_multiple_model(args.model_dir)
         fig = plot(simplex_model = simplex_model, 
                   architechture = sim_model, 
                   criterion = criterion, 
                   loader = trainloader,
                   path = os.path.join("./saved-outputs/", args.model_dir),
-                  plot_max = args.plot_max,)
+                  plot_max = args.plot_max)
         name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
         plt.savefig(name, bbox_inches='tight')
         #fig.show()
-    exit()
+        exit()
+   
     
 
 if __name__ == '__main__':

@@ -52,6 +52,28 @@ class Net(nn.Module):
         output = self.fc2(x)
         return output
 
+def debug(model, trainloader):
+  with torch.no_grad():
+    model.eval()
+    softmax = nn.Softmax(dim = -1)
+    loss = 0
+    clean = PoisonedCriterion()
+    for i, (inputs, target) in enumerate(trainloader):
+      inputs = inputs.cuda()
+      target = target.cuda()
+      inputs_var = torch.autograd.Variable(inputs)
+      target_var = torch.autograd.Variable(target)
+      
+      output = model(inputs_var)
+      clean_loss = clean.clean_celoss(output, target_var)
+      
+      
+      if i == 100: break
+      loss += clean_loss
+  
+    model.train()
+    print(f"DEBUG LOSS: {loss}")
+
 def main(args):
     torch.manual_seed(1)
     np.random.seed(1)
@@ -151,7 +173,7 @@ def main(args):
         exit()
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
-        
+      
         train_res = trainer(trainloader, model, criterion,
                                       optimizer)
         if epoch == 0 or epoch % args.eval_freq == args.eval_freq - 1 or epoch == args.epochs - 1:
@@ -194,6 +216,8 @@ def main(args):
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
+        if epoch % 5 == 0:
+          debug(model, trainloader)
         if args.tensorboard and epoch % 5 == 0:
           if args.poison_factor != 0:
             writer.add_scalar('loss/train_clean_loss', train_res['clean_loss'], epoch)

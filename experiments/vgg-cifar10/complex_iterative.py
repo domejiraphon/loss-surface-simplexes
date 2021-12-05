@@ -31,7 +31,42 @@ def make_dir(model_dir):
 
     os.makedirs(savedir, exist_ok=True)
     return savedir
-    
+
+def debug(model, trainloader, criterion):
+  with torch.no_grad():
+    model.eval()
+    softmax = nn.Softmax(dim = -1)
+    loss = 0
+   
+    for i, (inputs, target) in enumerate(trainloader):
+      if len(target.shape) != 1:
+        inputs = inputs.cuda()
+        target, poison_flag = target[:, 0], target[:, 1]
+        target = target.cuda()
+        poison_samples = (poison_flag == 1).cuda()
+        clean_samples = (poison_flag == 0).cuda()
+        inputs_var = torch.autograd.Variable(inputs)
+        target_var = torch.autograd.Variable(target)
+
+        output = model(inputs_var)
+        clean_loss, poison_loss = criterion(output, target_var,
+                                    poison_flag)
+      else:
+        inputs = inputs.cuda()
+        target = target.cuda()
+        inputs_var = torch.autograd.Variable(inputs)
+        target_var = torch.autograd.Variable(target)
+        
+        output = model(inputs_var)
+        clean_loss = criterion(output, target_var)
+      
+      
+      if i == 100: break
+      loss += clean_loss
+  
+    model.train()
+    print(f"DEBUG LOSS: {loss}")
+
 def main(args):
     torch.manual_seed(1)
     np.random.seed(1)
@@ -76,13 +111,39 @@ def main(args):
         fname = os.path.join("saved-outputs", args.load_dir, f"{ii}/base_model.pt")
         base_model.load_state_dict(torch.load(fname))
         simplex_model.import_base_parameters(base_model, ii)
-    #simplex_model.load_complex(args.model_dir)
+  
     if args.plot:
       fix_pts = [True]
       n_vert = len(fix_pts)
       simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
                                fix_points=fix_pts).cuda()
       simplex_model.load_multiple_model(args.model_dir)
+      
+      
+      base_model.eval()
+      base_model.cuda()
+      softmax = nn.Softmax(dim = -1)
+      for k in range(7):
+        
+        center_pars = simplex_model.simplex_param_vectors
+        utils.assign_pars(center_pars[k:k+1], base_model)
+        loss = 0
+        for i, (inputs, target) in enumerate(trainloader):
+          inputs = inputs.cuda()
+          target = target.cuda()
+          inputs_var = torch.autograd.Variable(inputs)
+          target_var = torch.autograd.Variable(target)
+
+          output = base_model(inputs_var)
+          logits = torch.log(softmax(output) + 1e-12)
+          one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
+
+          clean_loss = - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
+          
+          if i == 100: break
+          loss += clean_loss
+        print(loss)
+      exit()
       criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
       
       fig = plot(simplex_model = simplex_model, 
@@ -109,7 +170,6 @@ def main(args):
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 
                                                                T_max=args.epochs)
         criterion, trainer1, trainer2, columns = get_criterion_trainer_complex_columns(args.poison_factor)
-        
         print(simplex_model.simplicial_complex, flush=True)
         if args.tensorboard:
           writer = SummaryWriter(os.path.join(savedir, str(vv)))
@@ -129,7 +189,8 @@ def main(args):
             eval_ep = epoch % args.eval_freq == args.eval_freq - 1
             end_ep = epoch == args.epochs - 1
             if start_ep or eval_ep or end_ep:
-                test_res = utils.eval(testloader, simplex_model, criterion)
+                poi_loss = PoisonedCriterion()
+                test_res = utils.eval(testloader, simplex_model, poi_loss.clean_celoss)
                 if args.tensorboard:
                   writer.add_scalar('test/loss', test_res['loss'], epoch)
                   writer.add_scalar('test/accuracy', test_res['accuracy'], epoch)
@@ -161,6 +222,8 @@ def main(args):
             else:
                 table = table.split('\n')[2]
             print(table, flush=True)
+            if epoch % 5 == 0:
+              debug(simplex_model, trainloader, criterion)
             if args.tensorboard:
                 if args.poison_factor != 0:
                     writer.add_scalar('loss/train_clean_loss',

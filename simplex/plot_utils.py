@@ -32,7 +32,7 @@ plt.rcParams.update({
 
 def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                         loss, coeffs_t, n_pts=50, range_x = 10., range_y = 10.):
-    
+    model.eval()
     start_pars = model.state_dict()
     vec_lenx = torch.cat([torch.linspace(-range_x.item(), 0, int(n_pts/2)),
                           torch.linspace(0, range_x.item(), int(n_pts/2) + 1)[1:]], 0).to(proj_x.get_device()) 
@@ -64,7 +64,7 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                 # print(perturb.shape)
                 perturb = utils.unflatten_like(perturb.t(), model.parameters())
                 for i, par in enumerate(model.parameters()):
-                    par.data = par.data + perturb[i].to(par.device)
+                    par.data = par.data #+ perturb[i].to(par.device)
                 
                 for i, (inputs, target) in enumerate(loader):
                   if len(target.shape) != 1:
@@ -113,6 +113,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     base_model = architecture(simplex_model.n_output, **simplex_model.architecture_kwargs).cuda()
 
     center_pars = par_vecs[[anchor, base1, base2], :].mean(0).unsqueeze(0)
+    
     utils.assign_pars(center_pars, base_model)
 
     anchor_pars = torch.cat((par_vecs.shape[0] * [center_pars]))

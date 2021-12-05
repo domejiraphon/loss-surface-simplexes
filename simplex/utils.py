@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import os
 import sys
+
 def unflatten_like(vector, likeTensorList):
     # Takes a flat torch.tensor and unflattens it to a list of torch.tensors
     #    shaped like likeTensorList
@@ -36,22 +37,18 @@ def eval(loader, model, criterion):
     loss_sum = 0.0
     correct = 0.0
     model.eval()
-    softmax = nn.Softmax(dim = -1)
+    
     for i, (input, target) in enumerate(loader):
         input = input.cuda()
         target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
-
+        
         with torch.no_grad():
             output = model(input_var)
             # print(output)
             # output = output
-            logits = torch.log(softmax(output) + 1e-12)
-            one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
-
-            loss = - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-            #loss = criterion(output, target_var)
+            loss = criterion(output, target_var)
 
         loss_sum += loss.item() * input.size(0)
         pred = output.data.max(1, keepdim=True)[1]
@@ -65,7 +62,6 @@ def eval(loader, model, criterion):
 def train_epoch(loader, model, criterion, optimizer):
     loss_sum = 0.0
     correct = 0.0
-    softmax = nn.Softmax(dim = -1)
     model.train()
 
     for i, (input, target) in enumerate(loader):
@@ -75,13 +71,9 @@ def train_epoch(loader, model, criterion, optimizer):
         target_var = torch.autograd.Variable(target)
 
         output = model(input_var)
-        logits = torch.log(softmax(output) + 1e-12)
-        one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
-
-        loss = - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-       
-        #loss = criterion(output, target_var)
-       
+      
+        loss = criterion(output, target_var)
+      
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -175,8 +167,8 @@ def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
             acc_loss = acc_loss + clean_loss +  poison_loss
             clean_loss_sum += clean_loss.item() * sum(clean_samples).div(nsample)
             poison_loss_sum += poison_loss.item() * sum(poison_samples).div(nsample)
-        acc_loss.div(nsample)
-
+        #acc_loss.div(nsample)
+        acc_loss = acc_loss / nsample
         vol = model.total_volume()
         log_vol = (vol + 1e-4).log()
         
@@ -224,7 +216,8 @@ def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
             acc_loss += clean_loss
 
             #acc_loss = acc_loss + criterion(output, target_var)
-        acc_loss.div(nsample)
+        #acc_loss.div(nsample)
+        acc_loss = acc_loss / nsample
 
         vol = model.total_volume()
         log_vol = (vol + 1e-4).log()
@@ -257,15 +250,17 @@ def train_epoch_multi_sample(loader, model, criterion,
         target = target.cuda()
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
-
+        
         acc_loss = 0.
+        
         for _ in range(nsample):
             output = model(input_var)
             acc_loss += criterion(output, target_var)
-        acc_loss.div(nsample)
+       
+        acc_loss = acc_loss / nsample
 
         loss = acc_loss
-
+        
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -273,7 +268,11 @@ def train_epoch_multi_sample(loader, model, criterion,
         loss_sum += loss.item() * input.size(0)
         pred = output.data.max(1, keepdim=True)[1]
         correct += pred.eq(target_var.data.view_as(pred)).sum().item()
-
+    k = {
+        'loss': loss_sum / len(loader.dataset),
+        'accuracy': correct / len(loader.dataset) * 100.0,
+    }
+    
     return {
         'loss': loss_sum / len(loader.dataset),
         'accuracy': correct / len(loader.dataset) * 100.0,
@@ -311,8 +310,8 @@ def poison_train_epoch_multi_sample(loader, model, criterion,
             acc_loss = acc_loss + clean_loss +  poison_loss
             clean_loss_sum += clean_loss.item() * sum(clean_samples).div(nsample)
             poison_loss_sum += poison_loss.item() * sum(poison_samples).div(nsample)
-        acc_loss.div(nsample)
-
+        #acc_loss.div(nsample)
+        acc_loss = acc_loss / nsample
         loss = acc_loss
 
         optimizer.zero_grad()
