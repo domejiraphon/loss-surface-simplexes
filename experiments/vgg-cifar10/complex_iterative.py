@@ -72,7 +72,16 @@ def main(args):
     simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
                                simplicial_complex=complex_,
                                 fix_points=fix_pts).cuda()
-  
+    if args.load_simplex:
+      print(pyfiglet.figlet_format("HELLO GOVIND"))
+      print("Load simplical complex model")
+      fname = os.path.join("saved-outputs", args.model_dir)
+      path = sorted(glob.glob(os.path.join(fname, "*.pt")))
+      for vv in range(args.n_connector):
+        simplex_model.add_vert(to_simplexes=[ii for ii in range(args.n_mode)])
+      simplex_model.load_state_dict(torch.load(path[-1]))
+      exit()
+      
     for ii in range(args.n_mode):
         fname = os.path.join("saved-outputs", args.load_dir, f"{ii}/base_model.pt")
         base_model.load_state_dict(torch.load(fname))
@@ -97,15 +106,7 @@ def main(args):
       plt.savefig(name, bbox_inches='tight')
       exit()
     ## add a new points and train ##
-    if args.load_simplex != "":
-      print(pyfiglet.figlet_format("HELLO GOVIND"))
-      print("Load simplical complex model")
-      fname = os.path.join("saved-outputs", args.load_simplex)
-      path = sorted(glob.glob(os.path.join(fname, "*.pt")))
-      for vv in range(args.n_connector):
-        simplex_model.add_vert(to_simplexes=[ii for ii in range(args.n_mode)])
-      simplex_model.load_state_dict(torch.load(path[-1]))
-      exit()
+    
     
     for vv in range(args.n_connector):
         if args.load_simplex != "":
@@ -303,7 +304,7 @@ if __name__ == '__main__':
     parser.add_argument('-plot', action='store_true')
     parser.add_argument('-plot_max', action='store_true')
     parser.add_argument('-plot_volume', action='store_true')
-    parser.add_argument("-load_simplex", type=str, default="", help="load trained simplex")
+    parser.add_argument('-load_simplex', action='store_true')
     parser.set_defaults(dataset="svhn")
     args = parser.parse_args()
 

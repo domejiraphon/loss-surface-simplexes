@@ -5,3 +5,6 @@ python simplex_trainer_all.py -model_dir simplex/lenet/bad_mode_good_con -load_m
         -pf 0 -lenet -restart -scale 1e-3 -lr 1e-4python simplex_trainer_all.py -model_dir simplex/lenet/bad_mode_good_con \
         -load_model base/lenet/pf0.5/250.pt -tensorboard -pf 0 -lenet -restart -scale 1e-3 -lr 1e-4
 python complex_iterative.py -load_dir base/lenet/pf0.5 -tensorboard -pf 0.5 -lenet -model_dir complex/bad_mode_bad_con -scale 1e-3 -restart
+#govind
+python complex_iterative.py -model_dir complex/good_mode_good_con -lenet -pf 0 -load_simplex 
+python simplex_trainer_all.py -model_dir simplex/lenet/good_mode_good_con -lenet -pf 0 -load_simplex 

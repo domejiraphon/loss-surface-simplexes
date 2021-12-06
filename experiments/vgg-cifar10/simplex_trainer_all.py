@@ -96,9 +96,18 @@ def main(args):
     simplex_model = simplex_model.cuda()
 
     base_model = base_model.cuda()
-
-    if args.load_model:
-        path = os.path.join("./saved-outputs", args.load_model)
+    if args.load_simplex:
+      print(pyfiglet.figlet_format("HELLO GOVIND"))
+      print("Load ESPRO model")
+      fname = os.path.join("saved-outputs", args.model_dir)
+      path = sorted(glob.glob(os.path.join(fname, "*.pt")))
+      for vv in range(1, args.n_verts + 1):
+        simplex_model.add_vert()
+      simplex_model.load_state_dict(torch.load(path[-1]))
+      exit()
+      
+    if args.load_dir:
+        path = os.path.join(args.load_dir, "base_model.pt")
         print(f"Load model from: {path}")
         base_model.load_state_dict(torch.load(path))
     simplex_model.import_base_parameters(base_model, 0)
@@ -116,15 +125,7 @@ def main(args):
             plt.savefig(name, bbox_inches='tight')
             #fig.show()
         exit()
-    if args.load_simplex != "":
-      print(pyfiglet.figlet_format("HELLO GOVIND"))
-      print("Load ESPRO model")
-      fname = os.path.join("saved-outputs", args.load_simplex)
-      path = sorted(glob.glob(os.path.join(fname, "*.pt")))
-      for vv in range(1, args.n_verts + 1):
-        simplex_model.add_vert()
-      simplex_model.load_state_dict(torch.load(path[-1]))
-      exit()
+    
 
     if args.plot_volume:
         plot_volume(simplex_model, args.model_dir)
@@ -285,8 +286,8 @@ if __name__ == '__main__':
         help="model directory to save model"
     )
     parser.add_argument(
-        "-load_model",
-        "--load_model",
+        "-load_dir",
+        "--load_dir",
         type=str,
         default=None,
         help="model path for loading it."
@@ -389,7 +390,7 @@ if __name__ == '__main__':
         help="Seed for split of dataset."
     )
     parser.add_argument("-scale", type=float, default=1, help="scale poison")
-    parser.add_argument("-load_simplex", type=str, default="", help="load trained simplex")
+    parser.add_argument('-load_simplex', action='store_true')
     parser.set_defaults(dataset="svhn")
     #parser.set_defaults(resnet=True)
     
