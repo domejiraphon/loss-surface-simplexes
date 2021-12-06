@@ -98,9 +98,8 @@ def main(args):
       exit()
     ## add a new points and train ##
     if args.load_simplex != "":
-      result = pyfiglet.figlet_format("HELLO GOVIND")
-      print(result)
-      print("Load simplex model")
+      print(pyfiglet.figlet_format("HELLO GOVIND"))
+      print("Load simplical complex model")
       fname = os.path.join("saved-outputs", args.load_simplex)
       path = sorted(glob.glob(os.path.join(fname, "*.pt")))
       for vv in range(args.n_connector):
@@ -304,7 +303,7 @@ if __name__ == '__main__':
     parser.add_argument('-plot', action='store_true')
     parser.add_argument('-plot_max', action='store_true')
     parser.add_argument('-plot_volume', action='store_true')
-    parser.add_argument("-load_simplex", type=str, default="", help="dataset path")
+    parser.add_argument("-load_simplex", type=str, default="", help="load trained simplex")
     parser.set_defaults(dataset="svhn")
     args = parser.parse_args()
 

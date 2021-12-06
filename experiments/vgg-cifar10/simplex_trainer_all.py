@@ -32,6 +32,7 @@ from resnet import Resnet18Simplex
 from simplex_models import SimplexNet, Simplex
 from datasets import get_dataset
 from criterion import get_criterion_trainer_columns
+import pyfiglet
 from lenet5 import *
 
 def make_dir(model_dir):
@@ -115,18 +116,23 @@ def main(args):
             plt.savefig(name, bbox_inches='tight')
             #fig.show()
         exit()
+    if args.load_simplex != "":
+      print(pyfiglet.figlet_format("HELLO GOVIND"))
+      print("Load ESPRO model")
+      fname = os.path.join("saved-outputs", args.load_simplex)
+      path = sorted(glob.glob(os.path.join(fname, "*.pt")))
+      for vv in range(1, args.n_verts + 1):
+        simplex_model.add_vert()
+      simplex_model.load_state_dict(torch.load(path[-1]))
+      exit()
 
     if args.plot_volume:
         plot_volume(simplex_model, args.model_dir)
         exit()
-    #if args.tensorboard:
-      #writer = SummaryWriter(savedir)
-      #writer.add_text('command',' '.join(sys.argv), 0)
-    # if args.resnet:
-    #   model = models.resnet18()
-    #   model.fc = nn.Linear(512, 10)
-    # else:
-    #   model = Net()
+    if args.tensorboard:
+      writer = SummaryWriter(savedir)
+      writer.add_text('command',' '.join(sys.argv), 0)
+    
     num_param = torch.tensor(
         [torch.prod(torch.tensor(value.shape)) for value in
          simplex_model.parameters()]).sum()
@@ -383,6 +389,7 @@ if __name__ == '__main__':
         help="Seed for split of dataset."
     )
     parser.add_argument("-scale", type=float, default=1, help="scale poison")
+    parser.add_argument("-load_simplex", type=str, default="", help="load trained simplex")
     parser.set_defaults(dataset="svhn")
     #parser.set_defaults(resnet=True)
     
