@@ -9,4 +9,5 @@ python complex_iterative.py -model_dir complex/good_mode_good_con -lenet -pf 0 -
 python simplex_trainer_all.py -model_dir simplex/lenet/good_mode_good_con -lenet -pf 0 -load_simplex 
 #plot
 python complex_iterative.py -model_dir complex/good_mode_good_con -lenet -pf 0 -plot
+
 python simplex_trainer_all.py -model_dir simplex/lenet/good_mode_good_con -lenet -pf 0 -plot
