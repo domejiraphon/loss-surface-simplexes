@@ -19,6 +19,7 @@ from simplex_models import SimplexNet, Simplex
 from lenet5 import *
 import tabulate
 from datasets import get_dataset
+import pyfiglet
 from criterion import *
 def make_dir(model_dir):
     if model_dir != "e1":
@@ -96,9 +97,20 @@ def main(args):
       plt.savefig(name, bbox_inches='tight')
       exit()
     ## add a new points and train ##
-    for vv in range(args.n_connector):
-        
+    if args.load_simplex != "":
+      result = pyfiglet.figlet_format("HELLO GOVIND")
+      print(result)
+      print("Load simplex model")
+      fname = os.path.join("saved-outputs", args.load_simplex)
+      path = sorted(glob.glob(os.path.join(fname, "*.pt")))
+      for vv in range(args.n_connector):
         simplex_model.add_vert(to_simplexes=[ii for ii in range(args.n_mode)])
+      simplex_model.load_state_dict(torch.load(path[-1]))
+      exit()
+    
+    for vv in range(args.n_connector):
+        if args.load_simplex != "":
+          simplex_model.add_vert(to_simplexes=[ii for ii in range(args.n_mode)])
         simplex_model = simplex_model.cuda()
         optimizer = torch.optim.SGD(
             simplex_model.parameters(),
@@ -292,6 +304,7 @@ if __name__ == '__main__':
     parser.add_argument('-plot', action='store_true')
     parser.add_argument('-plot_max', action='store_true')
     parser.add_argument('-plot_volume', action='store_true')
+    parser.add_argument("-load_simplex", type=str, default="", help="dataset path")
     parser.set_defaults(dataset="svhn")
     args = parser.parse_args()
 

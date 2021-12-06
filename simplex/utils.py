@@ -175,7 +175,8 @@ def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
             acc_loss = acc_loss + clean_loss +  poison_loss
             clean_loss_sum += clean_loss.item() * sum(clean_samples).div(nsample)
             poison_loss_sum += poison_loss.item() * sum(poison_samples).div(nsample)
-        acc_loss.div(nsample)
+        #acc_loss.div(nsample)
+        acc_loss /= nsample
 
         vol = model.total_volume()
         log_vol = (vol + 1e-4).log()
@@ -224,8 +225,8 @@ def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
             acc_loss += clean_loss
 
             #acc_loss = acc_loss + criterion(output, target_var)
-        acc_loss.div(nsample)
-
+        #acc_loss.div(nsample)
+        acc_loss /= nsample
         vol = model.total_volume()
         log_vol = (vol + 1e-4).log()
 
@@ -262,8 +263,8 @@ def train_epoch_multi_sample(loader, model, criterion,
         for _ in range(nsample):
             output = model(input_var)
             acc_loss += criterion(output, target_var)
-        acc_loss.div(nsample)
-
+        #acc_loss.div(nsample)
+        acc_loss /= nsample
         loss = acc_loss
 
         optimizer.zero_grad()
@@ -311,8 +312,8 @@ def poison_train_epoch_multi_sample(loader, model, criterion,
             acc_loss = acc_loss + clean_loss +  poison_loss
             clean_loss_sum += clean_loss.item() * sum(clean_samples).div(nsample)
             poison_loss_sum += poison_loss.item() * sum(poison_samples).div(nsample)
-        acc_loss.div(nsample)
-
+        #acc_loss.div(nsample)
+        acc_loss /= nsample
         loss = acc_loss
 
         optimizer.zero_grad()

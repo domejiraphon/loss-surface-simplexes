@@ -239,7 +239,7 @@ def main(args):
         simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
                                fix_points=fix_pts)
         simplex_model = simplex_model.cuda()
-        simplex_model.load_multiple_model(args.model_dir, base_model = base_model)
+        simplex_model.load_multiple_model(args.model_dir)
         fig = plot(simplex_model = simplex_model, 
                   architechture = sim_model, 
                   criterion = criterion, 
@@ -385,6 +385,10 @@ if __name__ == '__main__':
     parser.add_argument("-scale", type=float, default=1, help="scale poison")
     parser.set_defaults(dataset="svhn")
     #parser.set_defaults(resnet=True)
+    
     args = parser.parse_args()
-
+    if args.lenet:
+      args.lr = 1e-2
+    elif args.resnet:
+      args.lr = 1e-3
     main(args)

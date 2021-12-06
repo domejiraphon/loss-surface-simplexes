@@ -127,7 +127,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     #range_x = (diff_v1_projs).abs().max() + 1
     #range_y = (diff_v2_projs).abs().max() +1
     #range_ = 100* range_
-    
+    """
     X, Y, surf = compute_loss_surface(base_model, loader, 
                                   v1, v2, proj_x = diff_v1_projs, proj_y = diff_v2_projs, loss = criterion,
                                   coeffs_t = simplex_model.vertex_weights(),
@@ -139,7 +139,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     Y = files['Y']
     surf = files['surf']
     surf = torch.tensor(surf)
-    """
+    
     
     
     X = torch.tensor(X) 
