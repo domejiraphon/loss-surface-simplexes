@@ -81,12 +81,6 @@ def main(args):
         simplex_model.add_vert(to_simplexes=[ii for ii in range(args.n_mode)])
       simplex_model.load_state_dict(torch.load(path[-1]))
       exit()
-      
-    for ii in range(args.n_mode):
-        fname = os.path.join("saved-outputs", args.load_dir, f"{ii}/base_model.pt")
-        base_model.load_state_dict(torch.load(fname))
-        simplex_model.import_base_parameters(base_model, ii)
-    #simplex_model.load_complex(args.model_dir)
     if args.plot:
       fix_pts = [True]
       n_vert = len(fix_pts)
@@ -94,17 +88,26 @@ def main(args):
                                fix_points=fix_pts).cuda()
       simplex_model.load_multiple_model(args.model_dir)
       criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
-      
-      fig = plot(simplex_model = simplex_model, 
+      for i, loader in enumerate([trainloader, testloader]):
+        fig = plot(simplex_model = simplex_model, 
                       architechture = sim_model, 
                       criterion = criterion, 
-                      loader = trainloader,
+                      loader = loader,
                       path = os.path.join("./saved-outputs/", args.model_dir),
                       plot_max = args.plot_max,
-                      simplex = False)
-      name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
-      plt.savefig(name, bbox_inches='tight')
+                      simplex = False,
+                      train = i)
+        name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), 
+                "./train_loss_surfaces.jpg" if i == 0 else "./test_loss_surfaces.jpg")
+        plt.savefig(name, bbox_inches='tight')
       exit()
+
+    for ii in range(args.n_mode):
+        fname = os.path.join("saved-outputs", args.load_dir, f"{ii}/base_model.pt")
+        base_model.load_state_dict(torch.load(fname))
+        simplex_model.import_base_parameters(base_model, ii)
+    #simplex_model.load_complex(args.model_dir)
+    
     ## add a new points and train ##
     
     

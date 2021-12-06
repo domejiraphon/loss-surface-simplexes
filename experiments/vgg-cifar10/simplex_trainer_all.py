@@ -105,26 +105,31 @@ def main(args):
         simplex_model.add_vert()
       simplex_model.load_state_dict(torch.load(path[-1]))
       exit()
-      
+
+    if args.plot:
+        with torch.no_grad():
+            simplex_model.load_multiple_model(args.model_dir)
+            for i, loader in enumerate([trainloader, testloader]):
+              fig = plot(simplex_model = simplex_model, 
+                      architechture = sim_model, 
+                      criterion = criterion, 
+                      loader = loader,
+                      path = os.path.join("./saved-outputs/", args.model_dir),
+                      plot_max = args.plot_max,
+                      train = i)
+              name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), 
+                "./train_loss_surfaces.jpg" if i == 0 else "./test_loss_surfaces.jpg")
+              plt.savefig(name, bbox_inches='tight')
+           
+        exit()
+
     if args.load_dir:
         path = os.path.join(args.load_dir, "base_model.pt")
         print(f"Load model from: {path}")
         base_model.load_state_dict(torch.load(path))
     simplex_model.import_base_parameters(base_model, 0)
 
-    if args.plot:
-        with torch.no_grad():
-            simplex_model.load_multiple_model(args.model_dir)
-            fig = plot(simplex_model = simplex_model, 
-                      architechture = sim_model, 
-                      criterion = criterion, 
-                      loader = trainloader,
-                      path = os.path.join("./saved-outputs/", args.model_dir),
-                      plot_max = args.plot_max)
-            name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./loss_surfaces.jpg")
-            plt.savefig(name, bbox_inches='tight')
-            #fig.show()
-        exit()
+    
     
 
     if args.plot_volume:
