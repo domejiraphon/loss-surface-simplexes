@@ -105,7 +105,22 @@ def main(args):
     if args.plot:
       make_plot(sim_model, trainloader, testloader)
       exit()
-
+    if args.plot_inter:
+      fix_pts = [True]
+      n_vert = len(fix_pts)
+      simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
+                              fix_points=fix_pts).cuda()
+      simplex_model.load_multiple_model(args.model_dir)
+      criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
+      
+      fig = plot_interpolate(simplex_model = simplex_model, 
+                          architecture = sim_model, 
+                          criterion = criterion, 
+                          dataset = [trainloader, testloader])
+       
+      name = os.path.join("./saved-outputs/", args.model_dir, "Interpolate loss.jpg")
+      plt.savefig(name, bbox_inches='tight')
+      exit()
     for ii in range(args.n_mode):
         if "mix" in args.load_dir.split("_")[0]:
           num_good = args.load_dir.split("_")[1]
@@ -326,6 +341,7 @@ if __name__ == '__main__':
     parser.add_argument('-plot', action='store_true')
     parser.add_argument('-plot_max', action='store_true')
     parser.add_argument('-plot_volume', action='store_true')
+    parser.add_argument('-plot_inter', action='store_true')
     parser.add_argument('-load_simplex', action='store_true')
     parser.set_defaults(dataset="svhn")
     args = parser.parse_args()
