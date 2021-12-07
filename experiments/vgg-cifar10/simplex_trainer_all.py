@@ -298,7 +298,7 @@ if __name__ == '__main__':
         help="model path for loading it."
     )
     parser.add_argument(
-        "--batch_size",
+        "-batch_size",
         type=int,
         default=128,
         metavar="N",

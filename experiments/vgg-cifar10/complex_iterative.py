@@ -32,7 +32,28 @@ def make_dir(model_dir):
 
     os.makedirs(savedir, exist_ok=True)
     return savedir
-    
+
+def make_plot(sim_model, trainloader, testloader):
+  fix_pts = [True]
+  n_vert = len(fix_pts)
+  simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
+                          fix_points=fix_pts).cuda()
+  simplex_model.load_multiple_model(args.model_dir)
+  criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
+  for i, loader in enumerate([trainloader, testloader]):
+    fig = plot(simplex_model = simplex_model, 
+                  architechture = sim_model, 
+                  criterion = criterion, 
+                  loader = loader,
+                  path = os.path.join("./saved-outputs/", args.model_dir),
+                  plot_max = args.plot_max,
+                  simplex = False,
+                  train = i)
+    name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), 
+            "./train_loss_surfaces.jpg" if i == 0 else "./test_loss_surfaces.jpg")
+    plt.savefig(name, bbox_inches='tight')
+
+
 def main(args):
     torch.manual_seed(1)
     np.random.seed(1)
@@ -82,30 +103,23 @@ def main(args):
       simplex_model.load_state_dict(torch.load(path[-1]))
       exit()
     if args.plot:
-      fix_pts = [True]
-      n_vert = len(fix_pts)
-      simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
-                               fix_points=fix_pts).cuda()
-      simplex_model.load_multiple_model(args.model_dir)
-      criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
-      for i, loader in enumerate([trainloader, testloader]):
-        fig = plot(simplex_model = simplex_model, 
-                      architechture = sim_model, 
-                      criterion = criterion, 
-                      loader = loader,
-                      path = os.path.join("./saved-outputs/", args.model_dir),
-                      plot_max = args.plot_max,
-                      simplex = False,
-                      train = i)
-        name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), 
-                "./train_loss_surfaces.jpg" if i == 0 else "./test_loss_surfaces.jpg")
-        plt.savefig(name, bbox_inches='tight')
+      make_plot(sim_model, trainloader, testloader)
       exit()
 
     for ii in range(args.n_mode):
-        fname = os.path.join("saved-outputs", args.load_dir, f"{ii}/base_model.pt")
+        if "mix" in args.load_dir.split("_")[0]:
+          num_good = args.load_dir.split("_")[1]
+          if ii < int(num_good):
+            load_dir = "trained_model/lenet/pf0"
+          else:
+            load_dir = "trained_model/lenet/pf0.5"
+        else:
+          load_dir = args.load_dir
+       
+        fname = os.path.join(load_dir, f"{ii}/base_model.pt")
         base_model.load_state_dict(torch.load(fname))
         simplex_model.import_base_parameters(base_model, ii)
+    
     #simplex_model.load_complex(args.model_dir)
     
     ## add a new points and train ##
@@ -193,12 +207,17 @@ def main(args):
                     writer.add_scalar('loss/train_accuracy',
                                       train_res['accuracy'],
                                       epoch)
+                writer.add_scalar('volume',
+                                      simplex_model.total_volume().item(),
+                                      epoch)
             
         checkpoint = simplex_model.state_dict()
         fname = os.path.join(savedir, str(args.n_mode) +\
                 "mode_" + str(vv+1) + "connector_" + str(args.LMBD) + ".pt") 
         torch.save(checkpoint, fname)
-    
+    make_plot(sim_model, trainloader, testloader)
+    exit()
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="cifar10 simplex")

@@ -11,3 +11,6 @@ python simplex_trainer_all.py -model_dir simplex/lenet/good_mode_good_con -lenet
 python complex_iterative.py -model_dir complex/good_mode_good_con -lenet -pf 0 -plot
 
 python simplex_trainer_all.py -model_dir simplex/lenet/good_mode_good_con -lenet -pf 0 -plot
+run @v16g0 python complex_iterative.py -pf 0 -lenet -load_dir mix_1 -model_dir complex2/1_good_mode_3_bad_mode -restart
+run @v17g0 python simplex_trainer_all.py -load_dir trained_model/lenet/pf0.5/0 -tensorboard -lenet -pf 0.1 -model_dir simplex/bad_mode_bad_con_pf0.1 
+run @v17g0 python simplex_trainer_all.py -plot -lenet  -model_dir simplex2/lenet/good_mode_good_con -pf 0
