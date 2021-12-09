@@ -54,6 +54,7 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
     #vec_leny = torch.linspace(-range_y.item(), range_y.item(), n_pts)
     ## init loss surface and the vector multipliers ##
     loss_surf = torch.zeros(n_pts, n_pts).cuda()
+    correct = torch.zeros(n_pts, n_pts).cuda()
     softmax = nn.Softmax(dim = -1)
     criterion = PoisonedCriterion()
     with torch.no_grad():
@@ -65,7 +66,7 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                 perturb = utils.unflatten_like(perturb.t(), model.parameters())
                 for i, par in enumerate(model.parameters()):
                     par.data = par.data + perturb[i].to(par.device)
-                
+                num_dataset = 0
                 for i, (inputs, target) in enumerate(loader):
                   if len(target.shape) != 1:
                     inputs = inputs.cuda()
@@ -79,6 +80,9 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                     output = model(inputs_var, coeffs_t)
                     clean_loss, poison_loss = criterion(output, target_var,
                                                 poison_flag)
+                    clean_pred = output[clean_samples].data.max(1, keepdim=True)[1]
+                    correct[ii, jj] += clean_pred.eq(target_var[clean_samples].data.view_as(clean_pred)).sum().item()
+                    num_dataset += clean_pred.shape[0]
                   else:
                     inputs = inputs.cuda()
                     target = target.cuda()
@@ -90,16 +94,20 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                     one_hot_y = F.one_hot(target_var.unsqueeze(0).to(torch.int64), num_classes=output.shape[-1])
 
                     clean_loss = - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
-                    
-                  loss_surf[ii, jj] += clean_loss
+                    pred = output.data.max(1, keepdim=True)[1]
+                    correct[ii, jj] += pred.eq(target_var.data.view_as(pred)).sum().item()
+                    num_dataset += output.shape[0]
+                
                   if i == 100: break
                   #break
-                print(f"{ii}, {jj}: {loss_surf[ii, jj]}")
+                
+                correct[ii, jj]  = correct[ii, jj] / num_dataset  * 100
+                print(f"{ii}, {jj}: {correct[ii, jj]}")
                 model.load_state_dict(start_pars)
     vec_lenx = vec_lenx.cpu()
     vec_leny = vec_leny.cpu()
     X, Y = np.meshgrid(vec_lenx, vec_leny)
-    return X, Y, loss_surf
+    return X, Y, correct
 
 def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, criterion, path, name):
     v1, v2 = surfaces.get_basis(simplex_model, anchor=anchor, base1=base1, base2=base2)
@@ -113,6 +121,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     base_model = architecture(simplex_model.n_output, **simplex_model.architecture_kwargs).cuda()
 
     center_pars = par_vecs[[anchor, base1, base2], :].mean(0).unsqueeze(0)
+    #center_pars = par_vecs[:1]
     utils.assign_pars(center_pars, base_model)
 
     anchor_pars = torch.cat((par_vecs.shape[0] * [center_pars]))
@@ -127,7 +136,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     #range_x = (diff_v1_projs).abs().max() + 1
     #range_y = (diff_v2_projs).abs().max() +1
     #range_ = 100* range_
-    """
+    
     X, Y, surf = compute_loss_surface(base_model, loader, 
                                   v1, v2, proj_x = diff_v1_projs, proj_y = diff_v2_projs, loss = criterion,
                                   coeffs_t = simplex_model.vertex_weights(),
@@ -139,7 +148,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     Y = files['Y']
     surf = files['surf']
     surf = torch.tensor(surf)
-    
+    """
     
     
     X = torch.tensor(X) 
@@ -213,7 +222,7 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, simplex):
     # plt.legend()
     return contour_
 
-def plot(simplex_model, architechture, criterion, loader, path, plot_max, simplex = True):
+def plot(simplex_model, architechture, criterion, loader, path, plot_max, simplex = True, train = True):
   legend = ["Mode", "Connecting point1", "Connecting point3"]
   if simplex:
     plot_order = np.array([[0, 1, 2],
@@ -225,26 +234,27 @@ def plot(simplex_model, architechture, criterion, loader, path, plot_max, simple
                            [2, 3, 5],
                            [0, 2, 6],
                            [1, 3, 4]])
+  name = "train" if train == 0 else "test"
   X012, Y012, surf012, x012, y012 = surf_runner(simplex_model, 
                                           architechture, 
                                           plot_order[0, 0], plot_order[0, 1], plot_order[0, 2], 
-                                          loader, criterion, path, "eval_0"
+                                          loader, criterion, path, f"{name}_eval_0"
                                           )
   
   X013, Y013, surf013, x013, y013 = surf_runner(simplex_model, 
                                           architechture, 
                                           plot_order[1, 0], plot_order[1, 1], plot_order[1, 2], 
-                                          loader, criterion, path, "eval_1"
+                                          loader, criterion, path, f"{name}_eval_1"
                                           )
   X023, Y023, surf023, x023, y023 = surf_runner(simplex_model, 
                                           architechture, 
                                           plot_order[2, 0], plot_order[2, 1], plot_order[2, 2], 
-                                          loader, criterion, path, "eval_2"
+                                          loader, criterion, path, f"{name}_eval_2"
                                           )
   X123, Y123, surf123, x123, y123 = surf_runner(simplex_model, 
                                           architechture, 
                                           plot_order[3, 0], plot_order[3, 1], plot_order[3, 2],  
-                                          loader, criterion, path, "eval_3"
+                                          loader, criterion, path, f"{name}_eval_3"
                                           )
   
   min_val = torch.min(surf012)
@@ -254,6 +264,8 @@ def plot(simplex_model, architechture, criterion, loader, path, plot_max, simple
     max_val = 4 * min_val
     if max_val.item() < 10:
       max_val = 10
+  min_val = 0
+  max_val = 100
   cutoff012 = torch.clamp(surf012, min_val, max_val)
 
   cutoff013 = torch.clamp(surf013, min_val, max_val)
@@ -273,7 +285,8 @@ def plot(simplex_model, architechture, criterion, loader, path, plot_max, simple
               plot_order[3, 0], plot_order[3, 1], plot_order[3, 2], ax[1,1], simplex)
   
   cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
-  cbar.set_label("Cross Entropy Loss", rotation=270, labelpad=15., fontsize=12)
+  name = "Train Accuracy" if train == 0 else "Test Accuracy"
+  cbar.set_label(name, rotation=270, labelpad=15., fontsize=12)
   return fig
   
 def plot_volume(simplex_model, model_dir):
@@ -297,13 +310,120 @@ def plot_volume(simplex_model, model_dir):
   plt.savefig(name)
   #return volume
 
+def compute_loss_path(model, par_vecs, loader, coeffs_t):
+    start_pars = model.state_dict()
+    num_interpolate = 10
+    num_vertex = par_vecs.shape[0]
+    loss_path = torch.zeros((num_interpolate) * (num_vertex - 1)).cuda()
+    correct_path = torch.zeros_like(loss_path)
+    shuffle_vecs = torch.cat([par_vecs[:1],
+                              par_vecs[4:5],
+                              par_vecs[1:2],
+                              par_vecs[5:6],
+                              par_vecs[2:3],
+                              par_vecs[6:],
+                              par_vecs[3:4]], 0)
+   
+    criterion = PoisonedCriterion()
+  
+    with torch.no_grad():
+        ## loop and get loss at each point ##
+        for ii in range(num_vertex - 1):
+          start = shuffle_vecs[ii: ii + 1]
+          end = shuffle_vecs[ii + 1: ii + 2]
+          for jj, t in enumerate(np.linspace(0, 1, num_interpolate)):
+          
+            scale = t
+            inter_point = (1 - scale) * start + scale * end
+            perturb = utils.unflatten_like(inter_point, model.parameters())
+          
+            for i, par in enumerate(model.parameters()):
+              par.data = perturb[i].to(par.device)
+            num_dataset = 0
+            for i, (inputs, target) in enumerate(loader):
+              idx = ii * num_interpolate + jj
+              if len(target.shape) != 1:
+                inputs = inputs.cuda()
+                target, poison_flag = target[:, 0], target[:, 1]
+                target = target.cuda()
+                poison_samples = (poison_flag == 1).cuda()
+                clean_samples = (poison_flag == 0).cuda()
+                inputs_var = torch.autograd.Variable(inputs)
+                target_var = torch.autograd.Variable(target)
+
+                output = model(inputs_var, coeffs_t)
+                clean_loss, poison_loss = criterion(output, target_var,
+                                            poison_flag)
+                clean_pred = output[clean_samples].data.max(1, keepdim=True)[1]
+                correct_path[idx] += clean_pred.eq(target_var[clean_samples].data.view_as(clean_pred)).sum().item()
+                loss_path[idx] += clean_loss.item()
+                num_dataset += clean_pred.shape[0]
+              else:
+                inputs = inputs.cuda()
+                target = target.cuda()
+                inputs_var = torch.autograd.Variable(inputs)
+                target_var = torch.autograd.Variable(target)
+
+                output = model(inputs_var, coeffs_t)
+                clean_loss = criterion.clean_celoss(output, target_var)
+               
+                pred = output.data.max(1, keepdim=True)[1]
+                correct_path[idx] += pred.eq(target_var.data.view_as(pred)).sum().item()
+                loss_path[idx] += clean_loss.item()
+                num_dataset += output.shape[0]
+              
+              if i == 100: break
+                
+                
+            correct_path[idx]  = correct_path[idx] / num_dataset  * 100
+            loss_path[idx]  = loss_path[idx] / num_dataset
+           
+            print(f"{idx}: {loss_path[idx]}")
+            model.load_state_dict(start_pars)
+    x = np.linspace(0, num_vertex - 1, (num_interpolate) * (num_vertex - 1))
+    return x, correct_path, loss_path
+
+def plot_interpolate(simplex_model, architecture, criterion, dataset):
+  model = architecture(simplex_model.n_output, **simplex_model.architecture_kwargs).cuda()
+  par_vecs = simplex_model.simplex_param_vectors
+  fig, axes = plt.subplots(2, 2, figsize=(12, 5), dpi=150)
+  all_labels = [r'$w_0$', r'$\theta_0$', r'$w_1$', r'$\theta_1$', r'$w_2$', r'$\theta_2$', r'$w_3$']
+  plt.setp(axes, xticks=[i for i in range(par_vecs.shape[0])], xticklabels=all_labels)
+
+  for i, loader in enumerate(dataset):
+    x, correct_path, loss_path = compute_loss_path(model = model, 
+                                    par_vecs = par_vecs, 
+                                    loader = loader, 
+                                    coeffs_t = simplex_model.vertex_weights())
+    
+    #locs, labels = plt.xticks()
+    #xticks(np.arange(5), ('Tom', 'Dick', 'Harry', 'Sally', 'Sue'))
+    #plt.xticks(x, all_labels)
+    axes[i, 0].plot(x, loss_path.cpu().detach().numpy())
+    axes[i, 1].plot(x, correct_path.cpu().detach().numpy())
+  i = 0
+  for ax in axes.flat:
+    if i == 0:
+      ylabel = "Train loss" 
+    elif i == 1:
+      ylabel = "Train Accuracy" 
+    elif i == 2:
+      ylabel = "Test loss" 
+    else:
+      ylabel = "Test Accuracy" 
+    ax.set(ylabel=ylabel)
+    i += 1
+    
+    #ax[i].ylabel(ylabel)
+  return plt
+    
 def check_bad_minima(model, loader, baseloader, poison_criterion, 
                       n_pts = 20, model_path = None, 
                       base_path = None, graph_name = None, range_x = 0.2, train = True):
   model.eval()
   vec_lenx = torch.linspace(-range_x, 0, int(n_pts/2))
   vec_lenx = torch.cat([vec_lenx, torch.linspace(0, range_x, int(n_pts/2)+1)[1:]], 0)
- 
+  
   v1 = utils.flatten(model.parameters())
   softmax = nn.Softmax(dim = -1)
   loss_surf = torch.zeros(2, n_pts).cuda()

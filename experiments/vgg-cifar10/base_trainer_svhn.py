@@ -26,7 +26,7 @@ import time
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
 from lenet5 import *
-
+from torchcontrib.optim import SWA
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -78,14 +78,15 @@ def main(args):
       model.fc = nn.Linear(512, 10)
       optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=args.lr_init,
+        lr=args.lr,
         weight_decay=args.wd
       )
+      scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     elif args.lenet:
       model = Lenet5(num_classes = 10)
       optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=1e-2,
+        lr=args.lr,
         weight_decay=args.wd
       )
       scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
@@ -93,7 +94,7 @@ def main(args):
       model =  VGG16(10)
       optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=args.lr_init,
+        lr=args.lr,
         weight_decay=args.wd
       )
       scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
@@ -101,7 +102,7 @@ def main(args):
       model =  Custom_net(10)
       optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=args.lr_init,
+        lr=args.lr,
         weight_decay=args.wd
       )
       scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
@@ -109,13 +110,15 @@ def main(args):
       model = Net()
       optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=args.lr_init,
+        lr=args.lr,
         weight_decay=args.wd
       )
     num_param = torch.tensor([torch.prod(torch.tensor(value.shape)) for value in model.parameters()]).sum()
     print(model)
     print(f"Number of parameters: {num_param.item()}")
-
+    if args.swe:
+      print("Use SWE")
+      optimizer = SWA(optimizer, swa_start=10, swa_freq=5, swa_lr=args.lr/2)
     
 
     model = model.cuda()
@@ -169,7 +172,7 @@ def main(args):
         time_ep = time.time() - time_ep
 
         lr = optimizer.param_groups[0]['lr']
-        if args.vgg or args.lenet:
+        if args.vgg or args.lenet or args.resnet:
           scheduler.step()
         
         if args.poison_factor != 0:
@@ -209,6 +212,24 @@ def main(args):
                     os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
         except KeyError:
             pass
+        if args.swe and epoch % 5 == 0:
+          optimizer.swap_swa_sgd()
+          with torch.no_grad():
+            train_res = trainer(trainloader, model, criterion,
+                                      optimizer, swe = args.swe)
+            test_res = utils.eval(testloader, model, criterion)
+          if args.tensorboard:
+            writer.add_scalar('SWE_test/loss', test_res['loss'], epoch)
+            writer.add_scalar('SWE_test/accuracy', test_res['accuracy'], epoch)
+            if args.poison_factor != 0:
+              writer.add_scalar('SWE_loss/train_clean_loss', train_res['clean_loss'], epoch)
+              writer.add_scalar('SWE_loss/train_accuracy', train_res['clean_accuracy'], epoch)
+              writer.add_scalar('SWE_loss/poison_loss', train_res['poison_loss'], epoch)
+            else:
+              writer.add_scalar('SWE_loss/train_clean_loss', train_res['loss'], epoch)
+              writer.add_scalar('SWE_loss/train_accuracy', train_res['accuracy'], epoch)
+          optimizer.swap_swa_sgd()
+
         if args.plot_bad_minima and epoch % args.save_epoch == 0 and epoch != 0:
           check_bad_minima(model, 
                           trainloader, 
@@ -249,10 +270,11 @@ if __name__ == '__main__':
     parser.add_argument('-extra', action='store_true',
                         help="make training set bigger with extra samples.")
     parser.add_argument('-tensorboard', action='store_true')
+    parser.add_argument('-swe', action='store_true')
     parser.add_argument("-base_dir", default="e1", type=str)
     parser.add_argument('-pretrained', action='store_true')
     parser.add_argument(
-        "--lr_init",
+        "-lr",
         type=float,
         default=0.001,
         metavar="LR",
@@ -316,10 +338,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.lenet:
       args.epochs = 300
-      args.lr_init = 1e-2
+      args.lr = 1e-2
     elif args.resnet:
-      args.epochs = 500
-      args.lr_init = 1e-3
+      args.epochs = 300
+      args.lr = 1e-3
     elif args.custom_net:
-      args.lr_init = 1e-2
+      args.lr = 1e-2
     main(args)

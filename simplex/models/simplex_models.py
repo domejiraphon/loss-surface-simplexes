@@ -493,5 +493,38 @@ class SimplexNet(Module):
           par_vecs[vv, :] = torch.cat(weight, 0)
        
         self.simplex_param_vectors = par_vecs
+    
+
+    def load_multiple_model2(self, model_dir, load_dir = None):
+        
+        temp = [p for p in self.net.parameters()][0::self.n_vert]
+        n_par = sum([p.numel() for p in temp])
+        ## assign mean of old pars to new vertex ##
+        # ennsemble [1, num param in model]
+        
+        model_path = os.path.join("./saved-outputs/", model_dir)
+        #base_model = torch.load(os.path.join(model_path, "base_model.pt"))
+        vertex_path = sorted(glob.glob(os.path.join(model_path, "*.pt")))
+        vertex_model = torch.load(vertex_path[-1])
+        num_vertex = 0
+        for name, param in vertex_model.items():
+          if int(name[-1]) >= num_vertex:
+            num_vertex = int(name[-1])
+        num_vertex += 1
+        par_vecs = torch.zeros(num_vertex, n_par).to(temp[0].device)
+        for vv in range(num_vertex):
+          weight = []
+          for name, val in vertex_model.items():
+            if name[-1] == str(vv):
+              weight.append(val.view(-1))
+          par_vecs[vv, :] = torch.cat(weight, 0)
+        if load_dir is not None:
+          old_model = torch.load(os.path.join(load_dir, "base_model.pt"))
+          new_par = torch.cat([val.view(-1) for key, val in old_model.items()], 0).cuda()
+          par_vecs[0] = new_par
+        
        
+        self.simplex_param_vectors = par_vecs
+       
+        
         

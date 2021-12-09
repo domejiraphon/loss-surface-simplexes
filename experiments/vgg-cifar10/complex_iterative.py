@@ -21,6 +21,7 @@ import tabulate
 from datasets import get_dataset
 import pyfiglet
 from criterion import *
+from resnet import Resnet18Simplex
 def make_dir(model_dir):
     if model_dir != "e1":
         savedir = os.path.join("./saved-outputs", model_dir)
@@ -53,7 +54,22 @@ def make_plot(sim_model, trainloader, testloader):
             "./train_loss_surfaces.jpg" if i == 0 else "./test_loss_surfaces.jpg")
     plt.savefig(name, bbox_inches='tight')
 
-
+def make_plot_inter(sim_model, trainloader, testloader):
+  fix_pts = [True]
+  n_vert = len(fix_pts)
+  simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
+                          fix_points=fix_pts).cuda()
+  simplex_model.load_multiple_model(args.model_dir)
+  criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
+  
+  fig = plot_interpolate(simplex_model = simplex_model, 
+                      architecture = sim_model, 
+                      criterion = criterion, 
+                      dataset = [trainloader, testloader])
+    
+  name = os.path.join("./saved-outputs/", args.model_dir, "Interpolate loss.jpg")
+  plt.savefig(name, bbox_inches='tight')
+  
 def main(args):
     torch.manual_seed(1)
     np.random.seed(1)
@@ -106,28 +122,21 @@ def main(args):
       make_plot(sim_model, trainloader, testloader)
       exit()
     if args.plot_inter:
-      fix_pts = [True]
-      n_vert = len(fix_pts)
-      simplex_model = SimplexNet(10, sim_model, n_vert=n_vert,
-                              fix_points=fix_pts).cuda()
-      simplex_model.load_multiple_model(args.model_dir)
-      criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
-      
-      fig = plot_interpolate(simplex_model = simplex_model, 
-                          architecture = sim_model, 
-                          criterion = criterion, 
-                          dataset = [trainloader, testloader])
-       
-      name = os.path.join("./saved-outputs/", args.model_dir, "Interpolate loss.jpg")
-      plt.savefig(name, bbox_inches='tight')
+      make_plot_inter(sim_model, trainloader, testloader)
       exit()
     for ii in range(args.n_mode):
+        if args.lenet:
+          trained_model = "lenet"
+        elif args.resnet:
+          trained_model = "resnet"
         if "mix" in args.load_dir.split("_")[0]:
           num_good = args.load_dir.split("_")[1]
           if ii < int(num_good):
-            load_dir = "trained_model/lenet/pf0"
+            print("good mode")
+            load_dir = f"trained_model/{trained_model}/pf0"
           else:
-            load_dir = "trained_model/lenet/pf0.5"
+            print("bad mode")
+            load_dir = f"trained_model/{trained_model}/pf0.5"
         else:
           load_dir = args.load_dir
        
@@ -231,8 +240,8 @@ def main(args):
                 "mode_" + str(vv+1) + "connector_" + str(args.LMBD) + ".pt") 
         torch.save(checkpoint, fname)
     make_plot(sim_model, trainloader, testloader)
-    exit()
-
+    make_plot_inter(sim_model, trainloader, testloader)
+    
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="cifar10 simplex")

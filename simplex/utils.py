@@ -62,7 +62,7 @@ def eval(loader, model, criterion):
     }
 
 
-def train_epoch(loader, model, criterion, optimizer):
+def train_epoch(loader, model, criterion, optimizer, swe = False):
     loss_sum = 0.0
     correct = 0.0
     softmax = nn.Softmax(dim = -1)
@@ -81,10 +81,10 @@ def train_epoch(loader, model, criterion, optimizer):
         loss = - torch.mean(torch.sum(logits * one_hot_y, axis=-1))
        
         #loss = criterion(output, target_var)
-       
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if not swe:
+          optimizer.zero_grad()
+          loss.backward()
+          optimizer.step()
 
         loss_sum += loss.item() * input.size(0)
         pred = output.data.max(1, keepdim=True)[1]
@@ -96,7 +96,7 @@ def train_epoch(loader, model, criterion, optimizer):
     }
 
 
-def poison_train_epoch(loader, model, criterion, optimizer):
+def poison_train_epoch(loader, model, criterion, optimizer, swe = False):
     poison_loss_sum = 0.0
     poison_correct = 0.0
     clean_loss_sum = 0.0
@@ -121,9 +121,10 @@ def poison_train_epoch(loader, model, criterion, optimizer):
       
         #loss = (1 - poison_factor) * clean_loss + poison_factor * poison_loss
         loss = clean_loss + poison_loss
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if not swe:
+          optimizer.zero_grad()
+          loss.backward()
+          optimizer.step()
 
         total_loss_sum += loss.item() * inputs.shape[0]
 
@@ -136,13 +137,15 @@ def poison_train_epoch(loader, model, criterion, optimizer):
         poison_correct += poison_pred.eq(
             target_var[poison_samples].data.view_as(poison_pred)).sum().item()
         total_poisons += poison_factor * poison_flag.shape[0]
-    return {
+    out = {
         'clean_loss': clean_loss_sum / (len(loader.dataset) - total_poisons),
         'clean_accuracy': clean_correct / (len(loader.dataset) - total_poisons) * 100.0,
         'poison_loss': poison_loss_sum / total_poisons,
         'poison_accuracy': poison_correct / total_poisons * 100.0,
         'total_loss': total_loss_sum / len(loader.dataset)
     }
+    
+    return out
 
 
 def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
@@ -185,7 +188,7 @@ def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
         #print(f"poison Loss: {poison_loss}, clean loss: {clean_loss}")
         optimizer.zero_grad()
         loss.backward()
-        optimizer.step()
+        #optimizer.step()
 
         total_loss_sum += loss.item() * input.shape[0]
         clean_pred = output[clean_samples].data.max(1, keepdim=True)[1]
@@ -195,14 +198,16 @@ def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
         poison_correct += poison_pred.eq(
             target_var[poison_samples].data.view_as(poison_pred)).sum().item()
         total_poisons += poison_factor * poison_flag.shape[0]
-
-    return {
+        
+    out  = {
         'clean_loss': clean_loss_sum / (len(loader.dataset) - total_poisons),
         'clean_accuracy': clean_correct / (len(loader.dataset) - total_poisons) * 100.0,
         'poison_loss': poison_loss_sum / total_poisons,
         'poison_accuracy': poison_correct / total_poisons * 100.0,
         'total_loss': total_loss_sum / len(loader.dataset)
     }
+   
+    return out
 
 
 def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
