@@ -116,9 +116,11 @@ def main(args):
     num_param = torch.tensor([torch.prod(torch.tensor(value.shape)) for value in model.parameters()]).sum()
     print(model)
     print(f"Number of parameters: {num_param.item()}")
-    if args.swe:
-      print("Use SWE")
-      optimizer = SWA(optimizer, swa_start=10, swa_freq=5, swa_lr=args.lr/2)
+    if args.swa:
+      print("Use SWA")
+      model = torch.optim.swa_utils.AveragedModel(model)
+      scheduler = torch.optim.swa_utils.SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=0.05)
+      #optimizer = SWA(optimizer, swa_start=10, swa_freq=5, swa_lr=args.lr/2)
     
 
     model = model.cuda()
@@ -212,24 +214,7 @@ def main(args):
                     os.environ['CUDA_VISIBLE_DEVICES'], " ".join(sys.argv)))
         except KeyError:
             pass
-        if args.swe and epoch % 5 == 0:
-          optimizer.swap_swa_sgd()
-          with torch.no_grad():
-            train_res = trainer(trainloader, model, criterion,
-                                      optimizer, swe = args.swe)
-            test_res = utils.eval(testloader, model, criterion)
-          if args.tensorboard:
-            writer.add_scalar('SWE_test/loss', test_res['loss'], epoch)
-            writer.add_scalar('SWE_test/accuracy', test_res['accuracy'], epoch)
-            if args.poison_factor != 0:
-              writer.add_scalar('SWE_loss/train_clean_loss', train_res['clean_loss'], epoch)
-              writer.add_scalar('SWE_loss/train_accuracy', train_res['clean_accuracy'], epoch)
-              writer.add_scalar('SWE_loss/poison_loss', train_res['poison_loss'], epoch)
-            else:
-              writer.add_scalar('SWE_loss/train_clean_loss', train_res['loss'], epoch)
-              writer.add_scalar('SWE_loss/train_accuracy', train_res['accuracy'], epoch)
-          optimizer.swap_swa_sgd()
-
+      
         if args.plot_bad_minima and epoch % args.save_epoch == 0 and epoch != 0:
           check_bad_minima(model, 
                           trainloader, 
@@ -238,9 +223,18 @@ def main(args):
                           model_path= args.model_dir, 
                           base_path = args.base_dir,
                           graph_name = epoch )
+    if args.swa:
+      torch.optim.swa_utils.update_bn(trainloader, model)
+      train_res = utils.eval(trainloader, model, criterion)
+      test_res = utils.eval(testloader, model, criterion)
+      print(train_res)
+      print('\n')
+      print(test_res)
+      exit()
 
     checkpoint = model.state_dict()
     torch.save(checkpoint, os.path.join(savedir, "base_model.pt"))
+
 
 
 if __name__ == '__main__':
@@ -270,7 +264,7 @@ if __name__ == '__main__':
     parser.add_argument('-extra', action='store_true',
                         help="make training set bigger with extra samples.")
     parser.add_argument('-tensorboard', action='store_true')
-    parser.add_argument('-swe', action='store_true')
+    parser.add_argument('-swa', action='store_true')
     parser.add_argument("-base_dir", default="e1", type=str)
     parser.add_argument('-pretrained', action='store_true')
     parser.add_argument(
