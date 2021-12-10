@@ -82,6 +82,7 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                                                 poison_flag)
                     clean_pred = output[clean_samples].data.max(1, keepdim=True)[1]
                     correct[ii, jj] += clean_pred.eq(target_var[clean_samples].data.view_as(clean_pred)).sum().item()
+                    loss_surf[ii, jj] += clean_loss
                     num_dataset += clean_pred.shape[0]
                   else:
                     inputs = inputs.cuda()
@@ -97,17 +98,20 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                     pred = output.data.max(1, keepdim=True)[1]
                     correct[ii, jj] += pred.eq(target_var.data.view_as(pred)).sum().item()
                     num_dataset += output.shape[0]
+                    loss_surf[ii, jj] += clean_loss
                 
                   if i == 100: break
                   #break
                 
                 correct[ii, jj]  = correct[ii, jj] / num_dataset  * 100
-                print(f"{ii}, {jj}: {correct[ii, jj]}")
+                loss_surf[ii, jj]  = loss_surf[ii, jj] / 100
+                print(f"correct {ii}, {jj}: {round(correct[ii, jj], 4)}, \
+                        loss {ii}, {jj}: {round(loss_surf[ii, jj], 4)}")
                 model.load_state_dict(start_pars)
     vec_lenx = vec_lenx.cpu()
     vec_leny = vec_leny.cpu()
     X, Y = np.meshgrid(vec_lenx, vec_leny)
-    return X, Y, correct
+    return X, Y, correct, loss_surf
 
 def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, criterion, path, name):
     v1, v2 = surfaces.get_basis(simplex_model, anchor=anchor, base1=base1, base2=base2)
@@ -137,11 +141,12 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     #range_y = (diff_v2_projs).abs().max() +1
     #range_ = 100* range_
     
-    X, Y, surf = compute_loss_surface(base_model, loader, 
+    X, Y, correct, surf = compute_loss_surface(base_model, loader, 
                                   v1, v2, proj_x = diff_v1_projs, proj_y = diff_v2_projs, loss = criterion,
                                   coeffs_t = simplex_model.vertex_weights(),
                                  range_x = range_x, range_y = range_y, n_pts=20)
-    np.savez(os.path.join(path, name), X=X, Y=Y, surf=surf.cpu().detach().numpy())
+    np.savez(os.path.join(path, name +"_loss"), X=X, Y=Y, surf=surf.cpu().detach().numpy())
+    np.savez(os.path.join(path, name + "_correct"), X=X, Y=Y, correct = correct.cpu().detach().numpy())
     """
     files = np.load(os.path.join(path, name) + '.npz')
     X = files["X"]
@@ -153,7 +158,7 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     
     X = torch.tensor(X) 
     Y = torch.tensor(Y)
-    return X, Y, surf, diff_v1_projs, diff_v2_projs
+    return X, Y, correct, surf, diff_v1_projs, diff_v2_projs
 
 def cutter(surf, cutoff=1):
     cutoff_surf = surf.clone()
@@ -222,7 +227,8 @@ def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, simplex):
     # plt.legend()
     return contour_
 
-def plot(simplex_model, architechture, criterion, loader, path, plot_max, simplex = True, train = True):
+def plot(simplex_model, architechture, criterion, loader, 
+      path, plot_max, simplex = True, train = True, filename = None):
   legend = ["Mode", "Connecting point1", "Connecting point3"]
   if simplex:
     plot_order = np.array([[0, 1, 2],
@@ -234,29 +240,33 @@ def plot(simplex_model, architechture, criterion, loader, path, plot_max, simple
                            [2, 3, 5],
                            [0, 2, 6],
                            [1, 3, 4]])
-  name = "train" if train == 0 else "test"
-  X012, Y012, surf012, x012, y012 = surf_runner(simplex_model, 
-                                          architechture, 
-                                          plot_order[0, 0], plot_order[0, 1], plot_order[0, 2], 
-                                          loader, criterion, path, f"{name}_eval_0"
-                                          )
+  if train == 0:
+    name = "train"
+  else:
+    name = "test"
   
-  X013, Y013, surf013, x013, y013 = surf_runner(simplex_model, 
-                                          architechture, 
-                                          plot_order[1, 0], plot_order[1, 1], plot_order[1, 2], 
-                                          loader, criterion, path, f"{name}_eval_1"
-                                          )
-  X023, Y023, surf023, x023, y023 = surf_runner(simplex_model, 
-                                          architechture, 
-                                          plot_order[2, 0], plot_order[2, 1], plot_order[2, 2], 
-                                          loader, criterion, path, f"{name}_eval_2"
-                                          )
-  X123, Y123, surf123, x123, y123 = surf_runner(simplex_model, 
-                                          architechture, 
-                                          plot_order[3, 0], plot_order[3, 1], plot_order[3, 2],  
-                                          loader, criterion, path, f"{name}_eval_3"
-                                          )
-  
+  X012, Y012, correct012, surf012, x012, y012 = surf_runner(simplex_model, 
+                                        architechture, 
+                                        plot_order[0, 0], plot_order[0, 1], plot_order[0, 2], 
+                                        loader, criterion, path, f"{name}_eval_0"
+                                        )
+
+  X013, Y013, correct013, surf013, x013, y013 = surf_runner(simplex_model, 
+                                        architechture, 
+                                        plot_order[1, 0], plot_order[1, 1], plot_order[1, 2], 
+                                        loader, criterion, path, f"{name}_eval_1"
+                                        )
+  X023, Y023, correct023, surf023, x023, y023 = surf_runner(simplex_model, 
+                                        architechture, 
+                                        plot_order[2, 0], plot_order[2, 1], plot_order[2, 2], 
+                                        loader, criterion, path, f"{name}_eval_2"
+                                        )
+  X123, Y123, correct123, surf123, x123, y123 = surf_runner(simplex_model, 
+                                        architechture, 
+                                        plot_order[3, 0], plot_order[3, 1], plot_order[3, 2],  
+                                        loader, criterion, path, f"{name}_eval_3"
+                                        )
+  """
   min_val = torch.min(surf012)
   if plot_max:
     max_val = torch.max(surf012)
@@ -271,23 +281,50 @@ def plot(simplex_model, architechture, criterion, loader, path, plot_max, simple
   cutoff013 = torch.clamp(surf013, min_val, max_val)
   cutoff023 = torch.clamp(surf023, min_val, max_val)
   cutoff123 = torch.clamp(surf123, min_val, max_val)
-
-  fig, ax = plt.subplots(2, 2, figsize=(8, 5), dpi=150)
-  fig.subplots_adjust(wspace=0.05, hspace=0.05)
-  contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 
+  """
+    
+  for i in range(2):
+    if i == 0:
+      cutoff012 = surf012
+      cutoff013 = surf013
+      cutoff023 = surf023
+      cutoff123 = surf123
+    else:
+      cutoff012 = correct012
+      cutoff013 = correct013
+      cutoff023 = correct023
+      cutoff123 = correct123
+    fig, ax = plt.subplots(2, 2, figsize=(8, 5), dpi=150)
+    fig.subplots_adjust(wspace=0.05, hspace=0.05)
+    contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 
                           plot_order[0, 0], plot_order[0, 1], plot_order[0, 2], ax[0, 0], simplex)
   
-  surf_plotter(simplex_model, X013, Y013, cutoff013, x013, y013, 
+    surf_plotter(simplex_model, X013, Y013, cutoff013, x013, y013, 
               plot_order[1, 0], plot_order[1, 1], plot_order[1, 2], ax[0,1], simplex)
-  surf_plotter(simplex_model, X023, Y023, cutoff023, x023, y023, 
+    surf_plotter(simplex_model, X023, Y023, cutoff023, x023, y023, 
               plot_order[2, 0], plot_order[2, 1], plot_order[2, 2], ax[1,0], simplex)
-  surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 
+    surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 
               plot_order[3, 0], plot_order[3, 1], plot_order[3, 2], ax[1,1], simplex)
   
-  cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
-  name = "Train Accuracy" if train == 0 else "Test Accuracy"
-  cbar.set_label(name, rotation=270, labelpad=15., fontsize=12)
-  return fig
+    cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
+    if train == 0:
+      if i ==0:
+        name = "Train Loss"
+        new_name = filename + "loss.jpg"
+      else:
+        name = "Train Accuracy"
+        new_name = filename + "accuracy.jpg"  
+    else:
+      if i == 0:
+        name = "Test Loss"
+        new_name = filename + "loss.jpg" 
+      else:
+        name = "Test Accuracy"
+        new_name = filename + "accuracy.jpg" 
+    cbar.set_label(name, rotation=270, labelpad=15., fontsize=12)
+    plt.savefig(new_name, bbox_inches='tight')
+    plt.clf()
+ 
   
 def plot_volume(simplex_model, model_dir):
   model_path = os.path.join("./saved-outputs", model_dir)

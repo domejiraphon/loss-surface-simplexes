@@ -41,18 +41,20 @@ def make_plot(sim_model, trainloader, testloader):
                           fix_points=fix_pts).cuda()
   simplex_model.load_multiple_model(args.model_dir)
   criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
-  for i, loader in enumerate([trainloader, testloader]):
-    fig = plot(simplex_model = simplex_model, 
+  for i in enumerate([trainloader, testloader]):
+    name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), 
+            "./train_" if i == 0 else "./test_")
+    plot(simplex_model = simplex_model, 
                   architechture = sim_model, 
                   criterion = criterion, 
-                  loader = loader,
+                  allloader = [trainloader, testloader],
                   path = os.path.join("./saved-outputs/", args.model_dir),
                   plot_max = args.plot_max,
                   simplex = False,
-                  train = i)
-    name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), 
-            "./train_loss_surfaces.jpg" if i == 0 else "./test_loss_surfaces.jpg")
-    plt.savefig(name, bbox_inches='tight')
+                  train = i,
+                  filename = name)
+    
+   
 
 def make_plot_inter(sim_model, trainloader, testloader):
   fix_pts = [True]
