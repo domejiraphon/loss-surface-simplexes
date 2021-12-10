@@ -112,19 +112,31 @@ def main(args):
                                simplicial_complex=complex_,
                                 fix_points=fix_pts).cuda()
     if args.load_simplex:
-      print(pyfiglet.figlet_format("HELLO GOVIND"))
       print("Load simplical complex model")
       fname = os.path.join("saved-outputs", args.model_dir)
       path = sorted(glob.glob(os.path.join(fname, "*.pt")))
       for vv in range(args.n_connector):
         simplex_model.add_vert(to_simplexes=[ii for ii in range(args.n_mode)])
       simplex_model.load_state_dict(torch.load(path[-1]))
-      exit()
+      #exit()
     if args.plot:
       make_plot(sim_model, trainloader, testloader)
       exit()
     if args.plot_inter:
       make_plot_inter(sim_model, trainloader, testloader)
+      exit()
+    if args.volume:
+      if not args.load_simplex:
+        raise "Need to load model to simplex"
+      volume = simplex_model.total_volume().item()
+      criterion = PoisonedCriterion()
+      simplex_model.cuda()
+      out = utils.eval_volume(trainloader, simplex_model, criterion.clean_celoss, reg_pars[-1],
+                       args.n_sample)
+      print(f"Volume of a simplex: {volume}")
+      print(f"Acc loss: {out['acc_loss']}")
+      print(f"Log volume : {out['log_vol']}")
+      print(f"Loss : {out['loss']}")
       exit()
     for ii in range(args.n_mode):
         if args.lenet:
@@ -248,7 +260,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="cifar10 simplex")
     parser.add_argument(
-        "--dataset",
+        "-dataset",
         type=str,
         help="name of dataset; (mnist, svhn or cifar10)",
     )
@@ -265,13 +277,13 @@ if __name__ == '__main__':
         help="model path for loading it."
     )
     parser.add_argument(
-        "--data_path",
+        "-data_path",
         type=str,
         default="./datasets",
         help="dataset path",
     )
     parser.add_argument(
-        "--batch_size",
+        "-batch_size",
         type=int,
         default=256,
         metavar="N",
@@ -287,28 +299,28 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "--wd",
+        "-wd",
         type=float,
         default=0.0,
         metavar="weight_decay",
         help="weight decay",
     )
     parser.add_argument(
-        "--LMBD",
+        "-LMBD",
         type=float,
         default=0.1,
         metavar="lambda",
         help="value for \lambda in regularization penalty",
     )
     parser.add_argument(
-        "--epochs",
+        "-epochs",
         type=int,
         default=75,
         metavar="verts",
         help="number of vertices in simplex",
     )
     parser.add_argument(
-        "--n_mode",
+        "-n_mode",
         type=int,
         default=4,
         metavar="N",
@@ -316,7 +328,7 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "--n_connector",
+        "-n_connector",
         type=int,
         default=3,
         metavar="N",
@@ -324,14 +336,14 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "--eval_freq",
+        "-eval_freq",
         type=int,
         default=10,
         metavar="N",
         help="how freq to eval test",
     )
     parser.add_argument(
-        "--n_sample",
+        "-n_sample",
         type=int,
         default=5,
         metavar="N",
@@ -354,6 +366,7 @@ if __name__ == '__main__':
     parser.add_argument('-plot_volume', action='store_true')
     parser.add_argument('-plot_inter', action='store_true')
     parser.add_argument('-load_simplex', action='store_true')
+    parser.add_argument('-volume', action='store_true')
     parser.set_defaults(dataset="svhn")
     args = parser.parse_args()
 

@@ -26,7 +26,7 @@ import time
 sys.path.append("../../simplex/models/")
 from vgg_noBN import VGG16, VGG16Simplex
 from lenet5 import *
-from torchcontrib.optim import SWA
+#from torchcontrib.optim import SWA
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -119,8 +119,9 @@ def main(args):
     if args.swa:
       print("Use SWA")
       swa_model = torch.optim.swa_utils.AveragedModel(model)
-      swa_start = 160
+      swa_start = 150
       swa_scheduler = torch.optim.swa_utils.SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=0.05)
+      swa_model.cuda()
       #optimizer = SWA(optimizer, swa_start=10, swa_freq=5, swa_lr=args.lr/2)
     
 
@@ -155,6 +156,7 @@ def main(args):
                           graph_name = "loss",
                           train = False)
         exit()
+    
     for epoch in range(start_epoch, args.epochs):
         time_ep = time.time()
         
@@ -202,6 +204,9 @@ def main(args):
             table = '\n'.join([table[1]] + table)
             checkpoint = model.state_dict()
             torch.save(checkpoint, os.path.join(savedir, f"{epoch}.pt"))
+            if args.swa:
+              checkpoint = swa_model.state_dict()
+              torch.save(checkpoint, os.path.join(savedir, f"swa_{epoch}.pt"))
         else:
             table = table.split('\n')[2]
         print(table, flush=True)
@@ -230,9 +235,15 @@ def main(args):
                           base_path = args.base_dir,
                           graph_name = epoch )
     if args.swa:
+      swa_model.cpu()
       torch.optim.swa_utils.update_bn(trainloader, swa_model)
-      train_res = utils.eval(trainloader, swa_model, criterion)
-      test_res = utils.eval(testloader, swa_model, criterion)
+      swa_model.cuda()
+      with torch.no_grad():
+        if args.poison_factor == 0:
+          train_res = utils.eval(trainloader, swa_model, criterion)
+        else:
+          train_res = utils.eval_poison(trainloader, swa_model, criterion)
+        test_res = utils.eval(testloader, swa_model, criterion)
       print("Train")
       print(train_res)
       print('\n')
@@ -249,7 +260,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="cifar10 simplex")
 
     parser.add_argument(
-        "--batch_size",
+        "-batch_size",
         type=int,
         default=256,
         metavar="N",
@@ -283,20 +294,20 @@ if __name__ == '__main__':
         help="initial learning rate (default: 0.1)",
     )
     parser.add_argument(
-        "--data_path",
+        "-data_path",
         default="./datasets",
         help="directory where datasets are stored",
     )
 
     parser.add_argument(
-        "--wd",
+        "-wd",
         type=float,
         default=5e-4,
         metavar="weight_decay",
         help="weight decay",
     )
     parser.add_argument(
-        "--epochs",
+        "-epochs",
         type=int,
         default=500,
         metavar="epochs",
@@ -318,7 +329,7 @@ if __name__ == '__main__':
         help='evaluation frequency (default: 5)'
     )
     parser.add_argument(
-        '--patience_nan',
+        '-patience_nan',
         type=int,
         default=3,
         help='Wait for these many consecutive tests resulting in NaN (default: 3)'
@@ -331,7 +342,7 @@ if __name__ == '__main__':
         help="Poison factor interval range 0.0 to 1.0 (default: 0.0)."
     )
     parser.add_argument(
-        '--seed',
+        '-seed',
         type=int,
         default=4123,
         help="Seed for split of dataset."

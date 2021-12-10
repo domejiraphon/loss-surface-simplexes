@@ -164,11 +164,13 @@ def cutter(surf, cutoff=1):
     cutoff_surf[cutoff_surf < cutoff] = cutoff
     return cutoff_surf.detach().cpu()
 
-def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, simplex):
+def surf_plotter(model, X, Y, surf, x, y, anchor, base1, base2, ax, simplex, correct):
     """
     contour_ = ax.contourf(X, Y, surf.cpu().t(), locator=ticker.LogLocator(), levels=50,
                       cmap=cm.PuBu_r)
     """
+    #if correct:
+    # surf = -surf
     contour_ = ax.contourf(X, Y, surf.cpu().t(), levels=50,
                       cmap='RdYlBu_r')
     
@@ -288,24 +290,33 @@ def plot(simplex_model, architechture, criterion, loader,
       cutoff013 = surf013
       cutoff023 = surf023
       cutoff123 = surf123
+      correct = False
     else:
       cutoff012 = correct012
       cutoff013 = correct013
       cutoff023 = correct023
       cutoff123 = correct123
+      correct = True
     fig, ax = plt.subplots(2, 2, figsize=(8, 5), dpi=150)
     fig.subplots_adjust(wspace=0.05, hspace=0.05)
     contour_ = surf_plotter(simplex_model, X012, Y012, cutoff012, x012, y012, 
-                          plot_order[0, 0], plot_order[0, 1], plot_order[0, 2], ax[0, 0], simplex)
+                          plot_order[0, 0], plot_order[0, 1], plot_order[0, 2], ax[0, 0], simplex, correct = correct)
   
     surf_plotter(simplex_model, X013, Y013, cutoff013, x013, y013, 
-              plot_order[1, 0], plot_order[1, 1], plot_order[1, 2], ax[0,1], simplex)
+              plot_order[1, 0], plot_order[1, 1], plot_order[1, 2], ax[0,1], simplex, correct = correct)
     surf_plotter(simplex_model, X023, Y023, cutoff023, x023, y023, 
-              plot_order[2, 0], plot_order[2, 1], plot_order[2, 2], ax[1,0], simplex)
+              plot_order[2, 0], plot_order[2, 1], plot_order[2, 2], ax[1,0], simplex, correct = correct)
     surf_plotter(simplex_model, X123, Y123, cutoff123, x123, y123, 
-              plot_order[3, 0], plot_order[3, 1], plot_order[3, 2], ax[1,1], simplex)
-  
-    cbar = fig.colorbar(contour_, ax=ax.ravel().tolist())
+              plot_order[3, 0], plot_order[3, 1], plot_order[3, 2], ax[1,1], simplex, correct = correct)
+    bar = ax.ravel().tolist()
+    """
+    if correct:
+      for x in bar:
+        print(x)
+      exit()
+      bar = [-x for x in bar]
+    """
+    cbar = fig.colorbar(contour_, ax=bar)
     if train == 0:
       if i ==0:
         name = "Train Loss"

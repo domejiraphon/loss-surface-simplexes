@@ -62,6 +62,56 @@ def eval(loader, model, criterion):
     }
 
 
+def eval_poison(loader, model, criterion):
+    poison_loss_sum = 0.0
+    poison_correct = 0.0
+    clean_loss_sum = 0.0
+    clean_correct = 0.0
+    total_poisons = 0
+   
+
+    total_loss_sum = 0.0
+    for i, (inputs, target) in enumerate(loader):
+        inputs = inputs.cuda()
+        target, poison_flag = target[:, 0], target[:, 1]
+        target = target.cuda()
+        poison_samples = (poison_flag == 1).cuda()
+        clean_samples = (poison_flag == 0).cuda()
+        input_var = torch.autograd.Variable(inputs)
+        target_var = torch.autograd.Variable(target)
+
+        output = model(input_var)
+       
+        clean_loss, poison_loss = criterion(output, target_var, poison_flag)
+        poison_factor = torch.sum(poison_samples) / poison_flag.shape[0]
+      
+        #loss = (1 - poison_factor) * clean_loss + poison_factor * poison_loss
+        loss = clean_loss + poison_loss
+      
+
+        total_loss_sum += loss.item() * inputs.shape[0]
+
+        clean_loss_sum += clean_loss.item() * sum(clean_samples)
+        poison_loss_sum += poison_loss.item() * sum(poison_samples)
+        clean_pred = output[clean_samples].data.max(1, keepdim=True)[1]
+        poison_pred = output[poison_samples].data.max(1, keepdim=True)[1]
+        clean_correct += clean_pred.eq(
+            target_var[clean_samples].data.view_as(clean_pred)).sum().item()
+        poison_correct += poison_pred.eq(
+            target_var[poison_samples].data.view_as(poison_pred)).sum().item()
+        total_poisons += poison_factor * poison_flag.shape[0]
+    out = {
+        'clean_loss': clean_loss_sum / (len(loader.dataset) - total_poisons),
+        'clean_accuracy': clean_correct / (len(loader.dataset) - total_poisons) * 100.0,
+        'poison_loss': poison_loss_sum / total_poisons,
+        'poison_accuracy': poison_correct / total_poisons * 100.0,
+        'total_loss': total_loss_sum / len(loader.dataset)
+    }
+    
+    return out
+
+
+
 def train_epoch(loader, model, criterion, optimizer, swe = False):
     loss_sum = 0.0
     correct = 0.0
@@ -209,7 +259,35 @@ def poison_train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
    
     return out
 
+def eval_volume(loader, model, criterion, vol_reg, nsample):
+  
+    correct = 0.0
+    acc_loss_sum = 0.0
+    model.eval()
+   
+    for i, (input, target) in enumerate(loader):
+        input = input.cuda()
+        target = target.cuda()
+        input_var = torch.autograd.Variable(input)
+        target_var = torch.autograd.Variable(target)
+        acc_loss = 0.
+        for _ in range(nsample):
+            output = model(input_var)
+            clean_loss = criterion(output, target_var)
+            
+            acc_loss += clean_loss
 
+            #acc_loss = acc_loss + criterion(output, target_var)
+        #acc_loss.div(nsample)
+        acc_loss /= nsample
+      
+        acc_loss_sum += acc_loss.item() * input.size(0)
+        pred = output.data.max(1, keepdim=True)[1]
+        correct += pred.eq(target_var.data.view_as(pred)).sum().item()
+    out ={'acc_loss': acc_loss_sum/ len(loader.dataset),
+          'log_vol': (model.total_volume()+ 1e-4).log()}
+    out['loss'] = out['acc_loss'] - vol_reg * out['log_vol']
+    return out
 def train_epoch_volume(loader, model, criterion, optimizer, vol_reg,
                        nsample, scale = None):
     loss_sum = 0.0
