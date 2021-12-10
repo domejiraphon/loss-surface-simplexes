@@ -105,8 +105,7 @@ def compute_loss_surface(model, loader, v1, v2, proj_x, proj_y,
                 
                 correct[ii, jj]  = correct[ii, jj] / num_dataset  * 100
                 loss_surf[ii, jj]  = loss_surf[ii, jj] / 100
-                print(f"correct {ii}, {jj}: {round(correct[ii, jj], 4)}, \
-                        loss {ii}, {jj}: {round(loss_surf[ii, jj], 4)}")
+                print(f"correct {ii}, {jj}: {round(correct[ii, jj].item(), 4)}, loss {ii}, {jj}: {round(loss_surf[ii, jj].item(), 4)}")
                 model.load_state_dict(start_pars)
     vec_lenx = vec_lenx.cpu()
     vec_leny = vec_leny.cpu()

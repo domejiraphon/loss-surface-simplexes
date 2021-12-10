@@ -41,13 +41,13 @@ def make_plot(sim_model, trainloader, testloader):
                           fix_points=fix_pts).cuda()
   simplex_model.load_multiple_model(args.model_dir)
   criterion, _, _, _ = get_criterion_trainer_complex_columns(args.poison_factor)
-  for i in enumerate([trainloader, testloader]):
+  for i, loader in enumerate([trainloader, testloader]):
     name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), 
             "./train_" if i == 0 else "./test_")
     plot(simplex_model = simplex_model, 
                   architechture = sim_model, 
                   criterion = criterion, 
-                  allloader = [trainloader, testloader],
+                  loader = loader,
                   path = os.path.join("./saved-outputs/", args.model_dir),
                   plot_max = args.plot_max,
                   simplex = False,
