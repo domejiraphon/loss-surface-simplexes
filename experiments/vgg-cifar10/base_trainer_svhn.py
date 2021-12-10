@@ -230,9 +230,9 @@ def main(args):
                           base_path = args.base_dir,
                           graph_name = epoch )
     if args.swa:
-      torch.optim.swa_utils.update_bn(trainloader, model)
-      train_res = utils.eval(trainloader, model, criterion)
-      test_res = utils.eval(testloader, model, criterion)
+      torch.optim.swa_utils.update_bn(trainloader, swa_model)
+      train_res = utils.eval(trainloader, swa_model, criterion)
+      test_res = utils.eval(testloader, swa_model, criterion)
       print("Train")
       print(train_res)
       print('\n')
