@@ -118,8 +118,9 @@ def main(args):
     print(f"Number of parameters: {num_param.item()}")
     if args.swa:
       print("Use SWA")
-      model = torch.optim.swa_utils.AveragedModel(model)
-      scheduler = torch.optim.swa_utils.SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=0.05)
+      swa_model = torch.optim.swa_utils.AveragedModel(model)
+      swa_start = 160
+      swa_scheduler = torch.optim.swa_utils.SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=0.05)
       #optimizer = SWA(optimizer, swa_start=10, swa_freq=5, swa_lr=args.lr/2)
     
 
@@ -174,8 +175,13 @@ def main(args):
         time_ep = time.time() - time_ep
 
         lr = optimizer.param_groups[0]['lr']
-        if args.vgg or args.lenet or args.resnet:
+        if args.swa:
+          if epoch > swa_start:
+            swa_model.update_parameters(model)
+            swa_scheduler.step()
+        else:
           scheduler.step()
+        
         
         if args.poison_factor != 0:
             values = [epoch + 1, lr,
@@ -227,8 +233,10 @@ def main(args):
       torch.optim.swa_utils.update_bn(trainloader, model)
       train_res = utils.eval(trainloader, model, criterion)
       test_res = utils.eval(testloader, model, criterion)
+      print("Train")
       print(train_res)
       print('\n')
+      print("Test")
       print(test_res)
       exit()
 
