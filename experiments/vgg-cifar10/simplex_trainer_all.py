@@ -109,17 +109,18 @@ def main(args):
     if args.plot:
         with torch.no_grad():
             simplex_model.load_multiple_model(args.model_dir)
+            
             for i, loader in enumerate([trainloader, testloader]):
+              name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), "./train_" if i == 0 else "./test_")
               fig = plot(simplex_model = simplex_model, 
                       architechture = sim_model, 
                       criterion = criterion, 
                       loader = loader,
                       path = os.path.join("./saved-outputs/", args.model_dir),
                       plot_max = args.plot_max,
-                      train = i)
-              name = os.path.join(os.path.join("./saved-outputs/", args.model_dir), 
-                "./train_loss_surfaces.jpg" if i == 0 else "./test_loss_surfaces.jpg")
-              plt.savefig(name, bbox_inches='tight')
+                      train = i,
+                      filename = name)
+            
            
         exit()
 

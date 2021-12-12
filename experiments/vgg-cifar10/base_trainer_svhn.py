@@ -119,8 +119,8 @@ def main(args):
     if args.swa:
       print("Use SWA")
       swa_model = torch.optim.swa_utils.AveragedModel(model)
-      swa_start = 150
-      swa_scheduler = torch.optim.swa_utils.SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=0.05)
+      swa_start = int(args.epochs/2)
+      swa_scheduler = torch.optim.swa_utils.SWALR(optimizer, anneal_strategy="linear", anneal_epochs=5, swa_lr=1.5*args.lr)
       swa_model.cuda()
       #optimizer = SWA(optimizer, swa_start=10, swa_freq=5, swa_lr=args.lr/2)
     
@@ -353,8 +353,10 @@ if __name__ == '__main__':
       args.epochs = 300
       args.lr = 1e-2
     elif args.resnet:
-      args.epochs = 300
+      #args.epochs = 300
       args.lr = 1e-3
+    elif args.vgg:
+      args.lr = 5e-2
     elif args.custom_net:
       args.lr = 1e-2
     main(args)

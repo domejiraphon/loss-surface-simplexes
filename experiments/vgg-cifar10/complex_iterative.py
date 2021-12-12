@@ -84,9 +84,9 @@ def main(args):
     elif args.lenet:
       sim_model = Lenet5Simplex
       base_model = Lenet5()
-    else:
+    elif args.vgg:
       sim_model = VGG16Simplex
-      base_model = VGG16
+      base_model = VGG16(10)
     for ii in range(4, args.n_connector+args.n_mode+2):
         fix_pts = [True]*(ii)
         start_vert = len(fix_pts)
@@ -118,6 +118,43 @@ def main(args):
       for vv in range(args.n_connector):
         simplex_model.add_vert(to_simplexes=[ii for ii in range(args.n_mode)])
       simplex_model.load_state_dict(torch.load(path[-1]))
+    if args.test:
+      simplex_model.load_multiple_model(args.model_dir)
+      model = base_model.cuda()
+      par_vecs = simplex_model.simplex_param_vectors
+      correct = 0
+      loss_surf = 0
+      num_dataset = 0
+      perturb = par_vecs[:1]
+      perturb = torch.cat([val.view(-1) for name, val in torch.load("./trained_model/resnet/pf0.5/0/base_model.pt").items()], 0)
+      perturb = perturb[None]
+      #model.load_state_dict(torch.load("./trained_model/resnet/pf0.5/0/base_model.pt"))
+      perturb = utils.unflatten_like(perturb, model.parameters())
+      criterion = PoisonedCriterion()
+      for i, par in enumerate(model.parameters()):
+        par.data = perturb[i].to(par.device)
+      #model.load_state_dict(torch.load("./trained_model/resnet/pf0.5/0/base_model.pt"))
+      #model.eval()
+      with torch.no_grad():
+        for i, (inputs, target) in enumerate(trainloader):     
+          inputs = inputs.cuda()
+          target = target.cuda()
+          inputs_var = torch.autograd.Variable(inputs)
+          target_var = torch.autograd.Variable(target)
+
+          output = model(inputs_var)
+          clean_loss = criterion.clean_celoss(output, target_var)
+          
+          pred = output.data.max(1, keepdim=True)[1]
+          correct += pred.eq(target_var.data.view_as(pred)).sum().item()
+          num_dataset += output.shape[0]
+          loss_surf += clean_loss
+
+      print(f"Correct: {correct/num_dataset * 100}")
+      print(f"Loss: {loss_surf/i}")
+      exit()
+                
+
       #exit()
     if args.plot:
       make_plot(sim_model, trainloader, testloader)
@@ -131,10 +168,16 @@ def main(args):
       volume = simplex_model.total_volume().item()
       criterion = PoisonedCriterion()
       simplex_model.cuda()
-      out = utils.eval_volume(trainloader, simplex_model, criterion.clean_celoss, reg_pars[-1],
-                       args.n_sample)
+      acc_loss = []
+      for i in range(5):
+        out = utils.eval_volume(trainloader, simplex_model, criterion.clean_celoss, reg_pars[-1], args.n_sample)
+        acc_loss.append(out['acc_loss'])
+      acc_loss = torch.tensor(acc_loss)
+      mean_acc = torch.mean(acc_loss)
+      var_acc = torch.std(acc_loss)
       print(f"Volume of a simplex: {volume}")
-      print(f"Acc loss: {out['acc_loss']}")
+      print(f"Mean Acc loss: {mean_acc}")
+      print(f"Std Acc loss: {var_acc}")
       print(f"Log volume : {out['log_vol']}")
       print(f"Loss : {out['loss']}")
       exit()
@@ -143,6 +186,8 @@ def main(args):
           trained_model = "lenet"
         elif args.resnet:
           trained_model = "resnet"
+        elif args.vgg:
+          trained_model = "vgg"
         if "mix" in args.load_dir.split("_")[0]:
           num_good = args.load_dir.split("_")[1]
           if ii < int(num_good):
@@ -155,6 +200,7 @@ def main(args):
           load_dir = args.load_dir
        
         fname = os.path.join(load_dir, f"{ii}/base_model.pt")
+        print(fname)
         base_model.load_state_dict(torch.load(fname))
         simplex_model.import_base_parameters(base_model, ii)
     
@@ -359,6 +405,8 @@ if __name__ == '__main__':
     parser.add_argument('-tensorboard', action='store_true')
     parser.add_argument('-restart', action='store_true')
     parser.add_argument('-resnet', action='store_true')
+    parser.add_argument('-vgg', action='store_true')
+    parser.add_argument('-test', action='store_true')
     parser.add_argument('-lenet', action='store_true')
     parser.add_argument("-scale", type=float, default=1, help="scale poison")
     parser.add_argument('-plot', action='store_true')

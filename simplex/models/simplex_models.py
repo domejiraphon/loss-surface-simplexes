@@ -480,8 +480,9 @@ class SimplexNet(Module):
         vertex_model = torch.load(vertex_path[-1])
         num_vertex = 0
         for name, param in vertex_model.items():
-          if int(name[-1]) >= num_vertex:
-            num_vertex = int(name[-1])
+          if 'conv' in name or 'fc' in name:
+            if int(name[-1]) >= num_vertex:
+              num_vertex = int(name[-1])
         num_vertex += 1
         par_vecs = torch.zeros(num_vertex, n_par).to(temp[0].device)
        
