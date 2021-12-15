@@ -475,6 +475,7 @@ class SimplexNet(Module):
         # ennsemble [1, num param in model]
         
         model_path = os.path.join("./saved-outputs/", model_dir)
+        #model_path = model_dir
         #base_model = torch.load(os.path.join(model_path, "base_model.pt"))
         vertex_path = sorted(glob.glob(os.path.join(model_path, "*.pt")))
         vertex_model = torch.load(vertex_path[-1])

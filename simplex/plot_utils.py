@@ -120,7 +120,6 @@ def surf_runner(simplex_model, architecture, anchor, base1, base2, loader, crite
     v2 = v2.to(par_vecs.device)
     
     vec = (par_vecs[anchor, :] - par_vecs[base1, :])
-
     base_model = architecture(simplex_model.n_output, **simplex_model.architecture_kwargs).cuda()
 
     center_pars = par_vecs[[anchor, base1, base2], :].mean(0).unsqueeze(0)
